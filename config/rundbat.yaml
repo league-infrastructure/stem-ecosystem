@@ -1,0 +1,14 @@
+app_name: astro-template
+app_name_source: package.json name
+container_template: '{app}-{env}'
+database_template: '{app}_{env}'
+deployments:
+  dev:
+    compose_file: docker/docker-compose.yml
+    docker_context: orbstack
+  test:
+    compose_file: docker/docker-compose.yml
+    docker_context: docker1.apps1.jointheleague.org
+    hostname: stemecosystem.apps1.jointheleague.org
+notes: []
+∏
