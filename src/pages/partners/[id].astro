@@ -22,12 +22,12 @@ const partnerOpps = opportunities.filter(
   o => o.partner_name === partner.name
 );
 
-const socialLinks = [
-  { url: partner.website, label: 'Website', icon: '🌐' },
-  { url: partner.facebook, label: 'Facebook', icon: 'FB' },
-  { url: partner.twitter, label: 'Twitter', icon: 'X' },
-  { url: partner.linkedin, label: 'LinkedIn', icon: 'LI' },
-  { url: partner.instagram, label: 'Instagram', icon: 'IG' },
+const socialEntries = [
+  { url: partner.website, platform: 'website' as const },
+  { url: partner.facebook, platform: 'facebook' as const },
+  { url: partner.twitter, platform: 'twitter' as const },
+  { url: partner.linkedin, platform: 'linkedin' as const },
+  { url: partner.instagram, platform: 'instagram' as const },
 ].filter(s => s.url);
 ---
 
@@ -82,12 +82,12 @@ const socialLinks = [
           )}
         </dl>
 
-        {socialLinks.length > 1 && (
+        {socialEntries.length > 1 && (
           <div class="partner-social mt-2">
-            <dt style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--text-dark);letter-spacing:0.5px;margin-bottom:8px;">Connect</dt>
-            <div class="social-links">
-              {socialLinks.filter(s => s.label !== 'Website').map(s => (
-                <a href={s.url} target="_blank" rel="noopener" aria-label={s.label}>{s.icon}</a>
+            <div class="social-label">Connect</div>
+            <div class="social-icons-row">
+              {socialEntries.filter(s => s.platform !== 'website').map(s => (
+                <SocialIcon platform={s.platform} url={s.url} size={22} />
               ))}
             </div>
           </div>
@@ -161,6 +161,20 @@ const socialLinks = [
 
   .partner-detail-header h1 {
     margin-bottom: 8px;
+  }
+
+  .social-label {
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    color: var(--text-dark);
+    letter-spacing: 0.5px;
+    margin-bottom: 8px;
+  }
+
+  .social-icons-row {
+    display: flex;
+    gap: 14px;
   }
 
   .detail-mini-map {

@@ -1,5 +1,6 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
+import SocialIcon from '../components/SocialIcon.astro';
 ---
 
 <BaseLayout title="Contact | SD STEM Ecosystem">
@@ -24,11 +25,11 @@ import BaseLayout from '../layouts/BaseLayout.astro';
           </div>
           <div class="contact-item">
             <h3>Social</h3>
-            <div class="social-links">
-              <a href="https://www.facebook.com/groups/1462184020556689/about/" target="_blank" rel="noopener" aria-label="Facebook">FB</a>
-              <a href="https://www.instagram.com/sdstemecosystem" target="_blank" rel="noopener" aria-label="Instagram">IG</a>
-              <a href="https://www.linkedin.com/groups/7054524" target="_blank" rel="noopener" aria-label="LinkedIn">LI</a>
-              <a href="https://twitter.com/SDstemecosystem" target="_blank" rel="noopener" aria-label="Twitter">X</a>
+            <div class="contact-social-icons">
+              <SocialIcon platform="facebook" url="https://www.facebook.com/groups/1462184020556689/about/" size={24} />
+              <SocialIcon platform="instagram" url="https://www.instagram.com/sdstemecosystem" size={24} />
+              <SocialIcon platform="linkedin" url="https://www.linkedin.com/groups/7054524" size={24} />
+              <SocialIcon platform="twitter" url="https://twitter.com/SDstemecosystem" size={24} />
             </div>
           </div>
         </div>
@@ -85,6 +86,12 @@ import BaseLayout from '../layouts/BaseLayout.astro';
     letter-spacing: 0.5px;
     margin-bottom: 4px;
     color: var(--purple);
+  }
+
+  .contact-social-icons {
+    display: flex;
+    gap: 14px;
+    margin-top: 4px;
   }
 
   .contact-item p {

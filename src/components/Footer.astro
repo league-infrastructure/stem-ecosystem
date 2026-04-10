@@ -1,4 +1,5 @@
 ---
+import SocialIcon from './SocialIcon.astro';
 import scrapeMeta from '../data/scrape-meta.json';
 
 const lastUpdated = new Date(scrapeMeta.last_updated).toLocaleDateString('en-US', {
@@ -30,11 +31,11 @@ const lastUpdated = new Date(scrapeMeta.last_updated).toLocaleDateString('en-US'
     </div>
     <div class="footer-social">
       <h4>Follow Us</h4>
-      <div class="social-links">
-        <a href="https://www.facebook.com/groups/1462184020556689/about/" target="_blank" rel="noopener" aria-label="Facebook">FB</a>
-        <a href="https://www.instagram.com/sdstemecosystem" target="_blank" rel="noopener" aria-label="Instagram">IG</a>
-        <a href="https://www.linkedin.com/groups/7054524" target="_blank" rel="noopener" aria-label="LinkedIn">LI</a>
-        <a href="https://twitter.com/SDstemecosystem" target="_blank" rel="noopener" aria-label="Twitter">X</a>
+      <div class="footer-social-icons">
+        <SocialIcon platform="facebook" url="https://www.facebook.com/groups/1462184020556689/about/" size={22} />
+        <SocialIcon platform="instagram" url="https://www.instagram.com/sdstemecosystem" size={22} />
+        <SocialIcon platform="linkedin" url="https://www.linkedin.com/groups/7054524" size={22} />
+        <SocialIcon platform="twitter" url="https://twitter.com/SDstemecosystem" size={22} />
       </div>
     </div>
   </div>
@@ -106,24 +107,14 @@ const lastUpdated = new Date(scrapeMeta.last_updated).toLocaleDateString('en-US'
     color: var(--white);
   }
 
-  .footer-social .social-links {
+  .footer-social-icons {
     display: flex;
-    gap: 10px;
+    gap: 14px;
   }
-  .footer-social .social-links a {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 36px;
-    height: 36px;
-    border-radius: 50%;
-    background: rgba(255, 255, 255, 0.1);
-    color: rgba(255, 255, 255, 0.7);
-    font-size: 12px;
-    font-weight: 700;
+  .footer-social-icons :global(.social-icon) {
+    color: rgba(255, 255, 255, 0.6);
   }
-  .footer-social .social-links a:hover {
-    background: var(--purple);
+  .footer-social-icons :global(.social-icon:hover) {
     color: var(--white);
   }
 
