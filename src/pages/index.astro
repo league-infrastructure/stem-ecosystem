@@ -1,925 +1,216 @@
 ---
-import Layout from '../layouts/Layout.astro';
+import BaseLayout from '../layouts/BaseLayout.astro';
+import OpportunityCard from '../components/OpportunityCard.astro';
+import opportunities from '../data/opportunities.json';
+import partners from '../data/partners.json';
+import { getLogoPath } from '../lib/helpers';
+
+// Featured: soonest upcoming, prefer free
+const now = new Date();
+const upcoming = opportunities
+  .filter(o => o.date_start && new Date(o.date_start) >= now)
+  .sort((a, b) => {
+    const aFree = a.cost_range === 'Free' ? 0 : 1;
+    const bFree = b.cost_range === 'Free' ? 0 : 1;
+    if (aFree !== bFree) return aFree - bFree;
+    return new Date(a.date_start).getTime() - new Date(b.date_start).getTime();
+  })
+  .slice(0, 4);
+
+// Partner logos: prefer those with active opportunities, take up to 16
+const activePartnerNames = new Set(opportunities.map(o => o.partner_name));
+const logoPartners = partners
+  .filter(p => p.logo_src)
+  .sort((a, b) => {
+    const aActive = activePartnerNames.has(a.name) ? 0 : 1;
+    const bActive = activePartnerNames.has(b.name) ? 0 : 1;
+    return aActive - bActive;
+  })
+  .slice(0, 16);
 ---
 
-<Layout title="The League of Amazing Programmers">
-  <!-- NAV -->
-  <nav>
-    <div class="nav-inner">
-      <a href="#" class="logo">THE LEAGUE</a>
-      <div class="nav-links">
-        <a href="#programs">Programs</a>
-        <a href="#impact">Impact</a>
-        <a href="#community">Community</a>
-        <a href="#volunteer" class="nav-cta">Volunteer!</a>
+<BaseLayout title="SD STEM Ecosystem — Find STEM Opportunities in San Diego">
+  <!-- Hero -->
+  <section class="hero hero-home">
+    <div class="hero-inner">
+      <h1>We are creating a San Diego where everyone is connected to STEM learning opportunities.</h1>
+      <p class="hero-sub">Find programs, workshops, camps, and events for learners of all ages across San Diego County.</p>
+      <div class="hero-actions">
+        <a href="/opportunities" class="btn">Find Opportunities</a>
+        <a href="/partners" class="btn btn-outline-hero">View Partners</a>
+      </div>
+      <div class="hero-quick">
+        <a href="/opportunities?cost=Free" class="hero-tag">Free Programs</a>
+        <a href="/opportunities?age=Family" class="hero-tag">For Families</a>
+        <a href="/opportunities?type=Online" class="hero-tag">Online</a>
       </div>
     </div>
-  </nav>
+  </section>
 
-  <main>
-    <!-- HERO -->
-    <section class="hero halftone">
-      <div class="starburst starburst-1">POW!</div>
-      <div class="starburst starburst-2">ZAP!</div>
-      <div class="starburst starburst-3">CODE!</div>
-      <div class="starburst starburst-4">BANG!</div>
-
-      <div class="hero-content">
-        <div class="speech-bubble">
-          <p class="speech-small">Calling all future heroes...</p>
+  <!-- Featured Opportunities -->
+  {upcoming.length > 0 && (
+    <section class="section">
+      <div class="container">
+        <h2 class="text-center mb-3">Upcoming Opportunities</h2>
+        <div class="results-grid">
+          {upcoming.map(opp => <OpportunityCard opportunity={opp} />)}
         </div>
-        <h1>
-          <span class="hero-the">The</span>
-          <span class="hero-league">League</span>
-          <span class="hero-of">of Amazing Programmers</span>
-        </h1>
-        <p class="hero-tagline">Igniting Young Minds Through Coding</p>
-        <p class="hero-desc">
-          We prepare youth for 21st-century tech careers through multi-level weekly classes,
-          free Tech Club meetings, and hands-on learning across San Diego County.
-        </p>
-        <div class="hero-actions">
-          <a href="#programs" class="btn btn-pow">
-            <span class="btn-burst">BAM!</span>
-            Start Learning
-          </a>
-          <a href="#volunteer" class="btn btn-zap">
-            <span class="btn-burst">POW!</span>
-            Volunteer
-          </a>
-          <a href="#community" class="btn btn-wham">
-            <span class="btn-burst">ZAP!</span>
-            Donate
-          </a>
-        </div>
-      </div>
-
-      <div class="hero-swoosh"></div>
-    </section>
-
-    <!-- PROGRAMS (Comic Panels) -->
-    <section id="programs" class="programs">
-      <h2 class="section-title">
-        <span class="title-burst">KAPOW!</span>
-        Choose Your Superpower
-      </h2>
-      <div class="comic-grid">
-        <div class="panel panel-python">
-          <div class="panel-inner halftone">
-            <div class="panel-icon">&#128013;</div>
-            <h3>Python Programming</h3>
-            <p>The world's most popular language — perfect for new heroes starting their coding journey!</p>
-            <div class="panel-badge">BEGINNER FRIENDLY</div>
-          </div>
-        </div>
-        <div class="panel panel-java">
-          <div class="panel-inner halftone">
-            <div class="panel-icon">&#9749;</div>
-            <h3>Java Programming</h3>
-            <p>From basics to professional certification — forge your skills into an industry-grade weapon!</p>
-            <div class="panel-badge">FULL CURRICULUM</div>
-          </div>
-        </div>
-        <div class="panel panel-robotics">
-          <div class="panel-inner halftone">
-            <div class="panel-icon">&#129302;</div>
-            <h3>Robotics, AI &amp; Tech</h3>
-            <p>Build real robots and circuits. Hands-on electronics and fabrication for aspiring inventors!</p>
-            <div class="panel-badge">HANDS-ON</div>
-          </div>
+        <div class="text-center mt-3">
+          <a href="/opportunities" class="btn">View All Opportunities</a>
         </div>
       </div>
     </section>
+  )}
 
-    <!-- IMPACT -->
-    <section id="impact" class="impact halftone">
-      <h2 class="section-title">
-        <span class="title-burst">WHAM!</span>
-        Hero Origin Stories
-      </h2>
-      <p class="impact-subtitle">Our students have gone on to work at...</p>
-      <div class="company-logos">
-        <span class="company">Google</span>
-        <span class="company">Amazon</span>
-        <span class="company">Microsoft</span>
-        <span class="company">Sony</span>
-        <span class="company">Intuit</span>
-        <span class="company">PlayStation</span>
-      </div>
-      <div class="stats-row">
-        <div class="stat">
-          <div class="stat-burst">
-            <span class="stat-number">FREE</span>
-          </div>
-          <span class="stat-label">Tech Club Classes</span>
+  <!-- What We Do -->
+  <section class="section what-we-do">
+    <div class="container">
+      <h2 class="text-center mb-3">Why We Build a STEM Ecosystem</h2>
+      <div class="info-grid">
+        <div class="info-card card">
+          <div class="info-icon">🔍</div>
+          <h3>Find Opportunities</h3>
+          <p>Discover STEM programs—from camps to workshops—for learners of every age and background across San Diego.</p>
         </div>
-        <div class="stat">
-          <div class="stat-burst">
-            <span class="stat-number">501(c)(3)</span>
-          </div>
-          <span class="stat-label">Nonprofit Mission</span>
+        <div class="info-card card">
+          <div class="info-icon">🤝</div>
+          <h3>Connect Partners</h3>
+          <p>We bring together organizations, businesses, schools, and community groups to expand STEM access for all.</p>
         </div>
-        <div class="stat">
-          <div class="stat-burst">
-            <span class="stat-number">SD County</span>
-          </div>
-          <span class="stat-label">Schools Served</span>
+        <div class="info-card card">
+          <div class="info-icon">🚀</div>
+          <h3>Empower Tomorrow</h3>
+          <p>The next generation must be equipped to become the thinkers, problem solvers and innovators we need today and in the future.</p>
         </div>
-      </div>
-    </section>
-
-    <!-- COMMUNITY PROGRAMS -->
-    <section id="community" class="community">
-      <h2 class="section-title">
-        <span class="title-burst">BOOM!</span>
-        Join the Squad
-      </h2>
-      <div class="squad-grid">
-        <div class="squad-card">
-          <div class="squad-header">TECH CLUB</div>
-          <p>Free introductory classes in multiple languages. No experience? No problem. Every hero starts somewhere.</p>
-          <div class="squad-tag">FREE</div>
-        </div>
-        <div class="squad-card">
-          <div class="squad-header">ROBOT GARAGE</div>
-          <p>Hands-on electronics, soldering, 3D printing, and fabrication. Build things that move and think!</p>
-          <div class="squad-tag">BUILD</div>
-        </div>
-        <div class="squad-card">
-          <div class="squad-header">LEAGUE LABS</div>
-          <p>Advanced apprenticeship with real research projects. Level up from student to professional.</p>
-          <div class="squad-tag">ADVANCED</div>
-        </div>
-        <div class="squad-card">
-          <div class="squad-header">AFTER SCHOOL</div>
-          <p>Semester-long programs at partner schools across San Diego County. We come to you!</p>
-          <div class="squad-tag">SCHOOLS</div>
-        </div>
-      </div>
-    </section>
-
-    <!-- VOLUNTEER CTA -->
-    <section id="volunteer" class="volunteer halftone">
-      <div class="volunteer-inner">
-        <div class="big-burst">POW!</div>
-        <h2>Every Hero Needs a Mentor</h2>
-        <p>Volunteer your coding superpowers. Teach a class. Change a life.</p>
-        <div class="volunteer-actions">
-          <a href="https://www.jointheleague.org/" class="btn btn-pow" target="_blank">Volunteer Now</a>
-          <a href="https://www.jointheleague.org/" class="btn btn-zap" target="_blank">Donate</a>
-        </div>
-      </div>
-    </section>
-  </main>
-
-  <!-- FOOTER -->
-  <footer>
-    <div class="footer-inner">
-      <div class="footer-brand">
-        <span class="footer-logo">THE LEAGUE</span>
-        <p>of Amazing Programmers</p>
-        <p class="footer-mission">Giving every student an opportunity for a technical career.</p>
-      </div>
-      <div class="footer-contact">
-        <p>12625 High Bluff Drive #113</p>
-        <p>San Diego, CA 92130</p>
-        <p>(858) 284-0481</p>
-        <p>info@jointheleague.org</p>
-      </div>
-      <div class="footer-tagline">
-        <div class="mini-burst">ZAP!</div>
-        <p>501(c)(3) Nonprofit</p>
-        <p>Tax ID: 20-4744610</p>
       </div>
     </div>
-    <div class="footer-bottom">
-      <p>&copy; 2026 The League of Amazing Programmers. All rights reserved. With great code comes great responsibility.</p>
+  </section>
+
+  <!-- Partner Logos -->
+  <section class="section">
+    <div class="container">
+      <h2 class="text-center mb-3">Our Partners</h2>
+      <div class="logo-grid">
+        {logoPartners.map(p => (
+          <a href={`/partners/${p.id}`} title={p.name}>
+            <img src={getLogoPath(p.logo_src)} alt={p.name} loading="lazy" />
+          </a>
+        ))}
+      </div>
+      <div class="text-center mt-3">
+        <a href="/partners" class="btn btn-secondary">View All Partners</a>
+      </div>
     </div>
-  </footer>
-</Layout>
+  </section>
+
+  <!-- CTA -->
+  <section class="ribbon ribbon-purple">
+    <div class="container">
+      <h2>Are you a STEM organization?</h2>
+      <p class="mt-1 mb-2">Join the San Diego STEM Ecosystem and help connect learners with opportunities.</p>
+      <a href="/contact" class="btn" style="background-image: linear-gradient(90deg, #c83e8e, #db8969);">Get In Touch</a>
+    </div>
+  </section>
+</BaseLayout>
 
 <style>
-  /* ===== NAV ===== */
-  nav {
-    position: fixed;
-    top: 0;
-    width: 100%;
-    z-index: 100;
-    background: var(--blue);
-    border-bottom: 3px solid var(--red);
-    padding: 0.8rem 1rem;
+  .hero-home {
+    min-height: 500px;
+    padding: 140px 40px 80px;
+    background-image: linear-gradient(180deg, #101a33, #2e2255);
   }
 
-  .nav-inner {
-    max-width: 1100px;
-    margin: 0 auto;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-  }
-
-  .logo {
-    font-family: 'Bangers', cursive;
-    font-size: 1.8rem;
-    color: var(--yellow) !important;
-    letter-spacing: 2px;
-    text-shadow: 2px 2px 0 var(--red);
-  }
-
-  .nav-links {
-    display: flex;
-    gap: 1.5rem;
-    align-items: center;
-    font-weight: 700;
-    font-size: 1rem;
-  }
-
-  .nav-links a {
-    color: var(--white);
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    transition: color 0.2s;
-  }
-
-  .nav-links a:hover {
-    color: var(--yellow);
-  }
-
-  .nav-cta {
-    background: var(--red);
-    padding: 0.4rem 1rem;
-    border-radius: 4px;
-    border: 2px solid var(--yellow);
-    font-family: 'Bangers', cursive;
-    font-size: 1.1rem;
-    letter-spacing: 1px;
-  }
-
-  /* ===== HERO ===== */
-  .hero {
-    position: relative;
-    min-height: 100vh;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: linear-gradient(135deg, var(--blue) 0%, var(--blue-mid) 40%, #0f3460 100%);
-    padding: 8rem 1rem 6rem;
-    overflow: hidden;
-  }
-
-  .hero-content {
-    position: relative;
-    z-index: 2;
-    text-align: center;
-    max-width: 800px;
-  }
-
-  .speech-bubble {
-    display: inline-block;
-    background: var(--white);
-    color: #111;
-    padding: 0.8rem 2rem;
-    border-radius: 24px;
-    border: 3px solid #111;
-    position: relative;
-    margin-bottom: 2rem;
-    font-weight: 700;
-    font-size: 1.3rem;
-  }
-
-  .speech-bubble::after {
-    content: '';
-    position: absolute;
-    bottom: -15px;
-    left: 50%;
-    transform: translateX(-50%);
-    border-width: 15px 10px 0;
-    border-style: solid;
-    border-color: #111 transparent transparent;
-  }
-
-  .speech-small {
-    margin: 0;
-  }
-
-  h1 {
-    font-family: 'Bangers', cursive;
-    line-height: 1;
-    margin: 1rem 0;
-  }
-
-  .hero-the {
-    display: block;
-    font-size: 3.5rem;
-    color: var(--white);
-    letter-spacing: 6px;
-  }
-
-  .hero-league {
-    display: block;
-    font-size: 8rem;
-    color: var(--yellow);
-    text-shadow: 5px 5px 0 var(--red), 8px 8px 0 rgba(0,0,0,0.3);
-    letter-spacing: 8px;
-  }
-
-  .hero-of {
-    display: block;
-    font-size: 2.8rem;
-    color: var(--cyan);
-    letter-spacing: 4px;
-    margin-top: 0.25rem;
-  }
-
-  .hero-tagline {
-    font-family: 'Bangers', cursive;
-    font-size: 2rem;
-    color: var(--orange);
-    letter-spacing: 3px;
-    margin: 1.5rem 0;
-  }
-
-  .hero-desc {
-    font-size: 1.3rem;
-    line-height: 1.8;
-    color: rgba(255,255,255,0.85);
+  .hero-inner {
     max-width: 650px;
-    margin: 0 auto 2.5rem;
   }
 
-  /* Starbursts */
-  .starburst {
-    position: absolute;
-    font-family: 'Bangers', cursive;
-    font-size: 2rem;
-    color: var(--blue);
-    z-index: 2;
-    transform: rotate(-12deg);
-    animation: pulse 2s ease-in-out infinite alternate;
-    width: 140px;
-    height: 140px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+  .hero-sub {
+    font-size: 18px;
+    font-weight: 400;
+    margin-top: 16px;
+    opacity: 0.9;
   }
 
-  .starburst::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background: var(--yellow);
-    clip-path: polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%);
-    z-index: -1;
-  }
-
-  .starburst-1 {
-    top: 15%;
-    left: 5%;
-    width: 140px;
-    height: 140px;
-    font-size: 1.8rem;
-    transform: rotate(-15deg);
-  }
-
-  .starburst-2 {
-    top: 12%;
-    right: 5%;
-    width: 160px;
-    height: 160px;
-    font-size: 2.2rem;
-    transform: rotate(10deg);
-    animation-delay: 0.5s;
-  }
-
-  .starburst-2::before {
-    background: var(--red);
-  }
-
-  .starburst-3 {
-    bottom: 18%;
-    left: 6%;
-    width: 130px;
-    height: 130px;
-    font-size: 1.6rem;
-    transform: rotate(-8deg);
-    animation-delay: 1s;
-  }
-
-  .starburst-3::before {
-    background: var(--cyan);
-  }
-
-  .starburst-4 {
-    bottom: 20%;
-    right: 7%;
-    width: 130px;
-    height: 130px;
-    font-size: 1.5rem;
-    transform: rotate(14deg);
-    animation-delay: 1.5s;
-  }
-
-  .starburst-4::before {
-    background: var(--orange);
-  }
-
-  @keyframes pulse {
-    from { transform: scale(1) rotate(-12deg); }
-    to { transform: scale(1.1) rotate(-8deg); }
-  }
-
-  /* Hero swoosh */
-  .hero-swoosh {
-    position: absolute;
-    bottom: -2px;
-    left: 0;
-    right: 0;
-    height: 80px;
-    background: var(--blue);
-    clip-path: polygon(0 60%, 100% 0, 100% 100%, 0 100%);
-    z-index: 3;
-  }
-
-  /* ===== BUTTONS ===== */
   .hero-actions {
     display: flex;
-    gap: 1rem;
+    gap: 12px;
     justify-content: center;
+    margin-top: 30px;
     flex-wrap: wrap;
   }
 
-  .btn {
-    position: relative;
-    display: inline-block;
-    padding: 1.1rem 2.5rem;
-    font-family: 'Bangers', cursive;
-    font-size: 1.5rem;
-    letter-spacing: 2px;
-    text-transform: uppercase;
-    border: 3px solid #111;
-    border-radius: 4px;
-    cursor: pointer;
-    transition: transform 0.15s, box-shadow 0.15s;
-    box-shadow: 4px 4px 0 #111;
-    text-decoration: none;
+  .btn-outline-hero {
+    background: transparent;
+    background-image: none;
+    border: 2px solid rgba(255, 255, 255, 0.5);
+    color: var(--white);
+    box-shadow: none;
   }
-
-  .btn:hover {
-    transform: translate(-2px, -2px);
-    box-shadow: 6px 6px 0 #111;
-    color: inherit;
-  }
-
-  .btn:active {
-    transform: translate(2px, 2px);
-    box-shadow: 1px 1px 0 #111;
-  }
-
-  .btn-burst {
-    position: absolute;
-    top: -12px;
-    right: -10px;
-    font-size: 0.7rem;
-    background: var(--yellow);
-    color: #111;
-    padding: 2px 6px;
-    border-radius: 50%;
-    border: 2px solid #111;
-    transform: rotate(12deg);
-  }
-
-  .btn-pow {
-    background: var(--red);
+  .btn-outline-hero:hover {
+    background-image: none;
+    border-color: var(--white);
     color: var(--white);
   }
 
-  .btn-zap {
-    background: var(--yellow);
-    color: #111;
-  }
-
-  .btn-wham {
-    background: var(--cyan);
-    color: #111;
-  }
-
-  /* ===== SECTION TITLES ===== */
-  .section-title {
-    font-family: 'Bangers', cursive;
-    font-size: 3rem;
-    text-align: center;
-    letter-spacing: 3px;
-    margin-bottom: 2.5rem;
-    position: relative;
-  }
-
-  .title-burst {
-    display: inline-block;
-    background: var(--red);
-    color: var(--yellow);
-    padding: 0.1rem 0.8rem;
-    font-size: 1.2rem;
-    border-radius: 4px;
-    border: 2px solid #111;
-    transform: rotate(-5deg);
-    margin-right: 0.5rem;
-    vertical-align: middle;
-    box-shadow: 2px 2px 0 #111;
-  }
-
-  /* ===== PROGRAMS (Comic Panels) ===== */
-  .programs {
-    padding: 4rem 1rem;
-    max-width: 1100px;
-    margin: 0 auto;
-  }
-
-  .comic-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-    gap: 1.5rem;
-  }
-
-  .panel {
-    border: var(--panel-border);
-    border-radius: 8px;
-    overflow: hidden;
-    transform: rotate(-0.5deg);
-    transition: transform 0.2s;
-  }
-
-  .panel:nth-child(2) {
-    transform: rotate(0.5deg);
-  }
-
-  .panel:nth-child(3) {
-    transform: rotate(-0.3deg);
-  }
-
-  .panel:hover {
-    transform: scale(1.03) rotate(0deg);
-  }
-
-  .panel-inner {
-    position: relative;
-    padding: 2.5rem 2rem;
-    min-height: 280px;
+  .hero-quick {
     display: flex;
-    flex-direction: column;
+    gap: 8px;
     justify-content: center;
-    align-items: center;
-    text-align: center;
-  }
-
-  .panel-python .panel-inner {
-    background: linear-gradient(135deg, #306998 0%, #4b8bbe 100%);
-  }
-
-  .panel-java .panel-inner {
-    background: linear-gradient(135deg, #b07219 0%, #f89820 100%);
-  }
-
-  .panel-robotics .panel-inner {
-    background: linear-gradient(135deg, #2d6a4f 0%, #52b788 100%);
-  }
-
-  .panel-icon {
-    font-size: 3.5rem;
-    margin-bottom: 1rem;
-    position: relative;
-    z-index: 2;
-  }
-
-  .panel-inner h3 {
-    font-family: 'Bangers', cursive;
-    font-size: 1.8rem;
-    letter-spacing: 2px;
-    margin-bottom: 0.75rem;
-    text-shadow: 2px 2px 0 rgba(0,0,0,0.3);
-    position: relative;
-    z-index: 2;
-  }
-
-  .panel-inner p {
-    font-size: 1rem;
-    line-height: 1.6;
-    color: rgba(255,255,255,0.9);
-    position: relative;
-    z-index: 2;
-  }
-
-  .panel-badge {
-    margin-top: 1rem;
-    background: var(--yellow);
-    color: #111;
-    font-family: 'Bangers', cursive;
-    font-size: 0.9rem;
-    padding: 0.25rem 0.75rem;
-    border: 2px solid #111;
-    border-radius: 4px;
-    letter-spacing: 1px;
-    position: relative;
-    z-index: 2;
-  }
-
-  /* ===== IMPACT ===== */
-  .impact {
-    position: relative;
-    background: linear-gradient(135deg, #e63946 0%, #c1121f 100%);
-    padding: 5rem 1rem;
-    text-align: center;
-  }
-
-  .impact .section-title {
-    color: var(--yellow);
-  }
-
-  .impact .title-burst {
-    background: var(--blue);
-    color: var(--yellow);
-  }
-
-  .impact-subtitle {
-    font-size: 1.3rem;
-    margin-bottom: 2rem;
-    color: rgba(255,255,255,0.9);
-    position: relative;
-    z-index: 2;
-  }
-
-  .company-logos {
-    display: flex;
+    margin-top: 20px;
     flex-wrap: wrap;
-    justify-content: center;
-    gap: 1.5rem;
-    margin-bottom: 3rem;
-    position: relative;
-    z-index: 2;
   }
 
-  .company {
-    font-family: 'Bangers', cursive;
-    font-size: 1.6rem;
+  .hero-tag {
+    display: inline-block;
+    padding: 4px 14px;
+    border-radius: 20px;
+    font-size: 13px;
+    font-weight: 500;
+    background: rgba(255, 255, 255, 0.15);
+    color: var(--white);
+    transition: background 200ms ease;
+  }
+  .hero-tag:hover {
+    background: rgba(255, 255, 255, 0.3);
+    color: var(--white);
+  }
+
+  .section {
+    padding: 60px 0;
+  }
+
+  .what-we-do {
     background: var(--white);
-    color: var(--blue);
-    padding: 0.5rem 1.2rem;
-    border: 3px solid #111;
-    border-radius: 4px;
-    box-shadow: 3px 3px 0 #111;
-    letter-spacing: 1px;
   }
 
-  .stats-row {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: center;
-    gap: 3rem;
-    position: relative;
-    z-index: 2;
-  }
-
-  .stat {
-    text-align: center;
-  }
-
-  .stat-burst {
-    width: 120px;
-    height: 120px;
-    background: var(--yellow);
-    border: 3px solid #111;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    margin: 0 auto 0.75rem;
-    box-shadow: 3px 3px 0 #111;
-  }
-
-  .stat-number {
-    font-family: 'Bangers', cursive;
-    font-size: 1.3rem;
-    color: var(--blue);
-    letter-spacing: 1px;
-  }
-
-  .stat-label {
-    font-weight: 700;
-    font-size: 1rem;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-  }
-
-  /* ===== COMMUNITY ===== */
-  .community {
-    padding: 5rem 1rem;
-    max-width: 1100px;
-    margin: 0 auto;
-  }
-
-  .squad-grid {
+  .info-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-    gap: 1.5rem;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 24px;
   }
 
-  .squad-card {
-    background: var(--blue-mid);
-    border: 3px solid var(--cyan);
-    border-radius: 8px;
-    padding: 2rem;
-    position: relative;
-    transition: transform 0.2s, border-color 0.2s;
-    box-shadow: 4px 4px 0 rgba(76, 201, 240, 0.2);
+  .info-icon {
+    font-size: 40px;
+    margin-bottom: 12px;
   }
 
-  .squad-card:hover {
-    transform: translate(-2px, -2px);
-    border-color: var(--yellow);
-    box-shadow: 6px 6px 0 rgba(255, 230, 109, 0.2);
-  }
-
-  .squad-header {
-    font-family: 'Bangers', cursive;
-    font-size: 1.5rem;
-    color: var(--yellow);
-    letter-spacing: 2px;
-    margin-bottom: 0.75rem;
-    text-shadow: 1px 1px 0 rgba(0,0,0,0.5);
-  }
-
-  .squad-card p {
-    font-size: 0.95rem;
-    line-height: 1.7;
-    color: rgba(255,255,255,0.8);
-    margin-bottom: 1rem;
-  }
-
-  .squad-tag {
-    display: inline-block;
-    font-family: 'Bangers', cursive;
-    font-size: 0.85rem;
-    background: var(--red);
-    color: var(--white);
-    padding: 0.15rem 0.6rem;
-    border-radius: 3px;
-    letter-spacing: 1px;
-    border: 2px solid #111;
-  }
-
-  /* ===== VOLUNTEER ===== */
-  .volunteer {
-    position: relative;
-    background: linear-gradient(135deg, var(--blue-mid) 0%, #0f3460 100%);
-    padding: 6rem 1rem;
+  .info-card {
+    padding: 30px;
     text-align: center;
   }
 
-  .volunteer-inner {
-    position: relative;
-    z-index: 2;
+  .info-card h3 {
+    margin-bottom: 8px;
   }
 
-  .big-burst {
-    font-family: 'Bangers', cursive;
-    font-size: 5rem;
-    color: var(--yellow);
-    text-shadow: 4px 4px 0 var(--red), 6px 6px 0 #111;
-    margin-bottom: 1rem;
-    animation: pulse 1.5s ease-in-out infinite alternate;
-    letter-spacing: 4px;
-  }
-
-  .volunteer h2 {
-    font-family: 'Bangers', cursive;
-    font-size: 2.8rem;
-    letter-spacing: 3px;
-    color: var(--white);
-    margin-bottom: 1rem;
-  }
-
-  .volunteer p {
-    font-size: 1.2rem;
-    color: rgba(255,255,255,0.85);
-    margin-bottom: 2rem;
-  }
-
-  .volunteer-actions {
-    display: flex;
-    gap: 1rem;
-    justify-content: center;
-    flex-wrap: wrap;
-  }
-
-  /* ===== FOOTER ===== */
-  footer {
-    background: #0a0a14;
-    border-top: 4px solid var(--red);
-    padding: 3rem 1rem 0;
-  }
-
-  .footer-inner {
-    max-width: 1100px;
-    margin: 0 auto;
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: 2rem;
-    padding-bottom: 2rem;
-  }
-
-  .footer-logo {
-    font-family: 'Bangers', cursive;
-    font-size: 1.5rem;
-    color: var(--yellow);
-    letter-spacing: 2px;
-    text-shadow: 2px 2px 0 var(--red);
-  }
-
-  .footer-brand p {
-    color: rgba(255,255,255,0.7);
-    line-height: 1.6;
-    margin-top: 0.3rem;
-  }
-
-  .footer-mission {
-    font-style: italic;
-    margin-top: 0.5rem !important;
-  }
-
-  .footer-contact p {
-    color: rgba(255,255,255,0.6);
-    line-height: 1.8;
-  }
-
-  .footer-tagline {
-    text-align: right;
-  }
-
-  .mini-burst {
-    display: inline-block;
-    font-family: 'Bangers', cursive;
-    font-size: 1.5rem;
-    color: var(--yellow);
-    text-shadow: 2px 2px 0 var(--red);
-    margin-bottom: 0.5rem;
-  }
-
-  .footer-tagline p {
-    color: rgba(255,255,255,0.5);
-    font-size: 0.9rem;
-  }
-
-  .footer-bottom {
-    border-top: 1px solid rgba(255,255,255,0.1);
-    text-align: center;
-    padding: 1.2rem 0;
-  }
-
-  .footer-bottom p {
-    color: rgba(255,255,255,0.35);
-    font-size: 0.85rem;
-  }
-
-  /* ===== RESPONSIVE ===== */
-  @media (max-width: 768px) {
-    .hero-league {
-      font-size: 4.5rem;
+  @media (max-width: 767px) {
+    .hero-home {
+      padding: 100px 20px 60px;
+      min-height: auto;
     }
-
-    .hero-the, .hero-of {
-      font-size: 1.8rem;
-    }
-
-    .section-title {
-      font-size: 2.2rem;
-    }
-
-    .starburst {
-      font-size: 1.5rem;
-    }
-
-    .starburst-1 { top: 8%; left: 3%; }
-    .starburst-2 { top: 10%; right: 3%; }
-    .starburst-3 { display: none; }
-
-    .nav-links {
-      gap: 0.75rem;
-      font-size: 0.85rem;
-    }
-
-    .logo {
-      font-size: 1.3rem;
-    }
-
-    .big-burst {
-      font-size: 3rem;
-    }
-
-    .volunteer h2 {
-      font-size: 2rem;
-    }
-
-    .footer-tagline {
-      text-align: left;
+    .hero-actions {
+      flex-direction: column;
+      align-items: center;
     }
   }
 </style>

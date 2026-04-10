@@ -1,0 +1,77 @@
+---
+const opportunityTypes = [
+  'Out-of-school Programs', 'Online', 'Professional Development / Conferences',
+  'School Programs', 'Career Connections', 'Work-based Learning',
+  'Volunteering', 'Funding Opportunities',
+];
+const ageGrades = [
+  'Pre-K', 'TK/K', 'Grades 1-2', 'Grades 3-5', 'Grades 6-8',
+  'Grades 9-12', 'Undergraduate', 'Graduate', 'Adult', 'Family',
+];
+const areasOfInterest = [
+  'Biology / LifeSciences', 'General Science', 'Engineering', 'Technology',
+  'Earth Science/Ecology', 'Coding/Computer Science/Cyber Security',
+  'Mathematics', 'Social Science', 'Physical Science', 'Chemistry', 'Physics',
+];
+const costs = [
+  'Free', 'Less than $25', 'Less than $50', 'Less than $100',
+  'Less than $200', 'Greater than $200',
+];
+const timesOfDay = [
+  'Morning', 'Afternoon', 'Evening', 'All Day', 'Online/Hybrid', 'Overnight',
+];
+---
+
+<aside class="filter-sidebar collapsed" id="opp-filters">
+  <button class="btn filter-toggle" id="filter-toggle-btn">Filter Opportunities</button>
+
+  <div class="filter-group">
+    <div class="filter-group-title">Search</div>
+    <input type="text" class="filter-search" placeholder="Search title or description…" data-filter="search" />
+  </div>
+
+  <div class="filter-group">
+    <div class="filter-group-title">Opportunity Type</div>
+    {opportunityTypes.map(v => (
+      <label><input type="checkbox" data-filter="type" value={v} /> {v}</label>
+    ))}
+  </div>
+
+  <div class="filter-group">
+    <div class="filter-group-title">Age / Grade Level</div>
+    {ageGrades.map(v => (
+      <label><input type="checkbox" data-filter="age" value={v} /> {v}</label>
+    ))}
+  </div>
+
+  <div class="filter-group">
+    <div class="filter-group-title">Areas of Interest</div>
+    {areasOfInterest.map(v => (
+      <label><input type="checkbox" data-filter="areas" value={v} /> {v}</label>
+    ))}
+  </div>
+
+  <div class="filter-group">
+    <div class="filter-group-title">Cost</div>
+    {costs.map(v => (
+      <label><input type="checkbox" data-filter="cost" value={v} /> {v}</label>
+    ))}
+  </div>
+
+  <div class="filter-group">
+    <div class="filter-group-title">Time of Day</div>
+    {timesOfDay.map(v => (
+      <label><input type="checkbox" data-filter="time" value={v} /> {v}</label>
+    ))}
+  </div>
+
+  <div class="filter-group">
+    <div class="filter-group-title">Other</div>
+    <label><input type="checkbox" data-filter="financial" value="Yes" /> Financial Support Available</label>
+    <label><input type="checkbox" data-filter="ngss" value="Yes" /> NGSS Aligned</label>
+  </div>
+
+  <div class="filter-actions">
+    <button class="filter-clear" id="clear-filters">Clear All Filters</button>
+  </div>
+</aside>
