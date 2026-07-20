@@ -299,6 +299,10 @@ h4 { font-size: 20px; }
   align-self: start;
   position: sticky;
   top: 90px;
+  /* Own scroll container: sticky header is 70px, sidebar sits at top:90px,
+     leave ~20px breathing room at the bottom of the viewport. */
+  max-height: calc(100vh - 110px);
+  overflow-y: auto;
 }
 
 .filter-group {
@@ -340,6 +344,30 @@ h4 { font-size: 20px; }
   flex-shrink: 0;
 }
 
+/* Facet option layout: name grows, count sits at the right. */
+.facet-name {
+  flex: 1;
+}
+.facet-count {
+  margin-left: auto;
+  flex-shrink: 0;
+  font-size: 12px;
+  color: var(--text);
+  opacity: 0.6;
+}
+
+/* Options with zero matching opportunities: de-emphasized + inert. */
+.filter-group label.is-empty {
+  opacity: 0.4;
+  cursor: default;
+}
+.filter-group label.is-empty:hover {
+  color: var(--text);
+}
+.filter-group label.is-empty input[type="checkbox"] {
+  cursor: default;
+}
+
 .filter-search {
   width: 100%;
   padding: 8px 12px;
@@ -355,6 +383,34 @@ h4 { font-size: 20px; }
   border-color: var(--purple);
 }
 
+/* Per-section "Clear" link (plain text link, right under each facet group). */
+.filter-clear-section {
+  display: inline-block;
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--text);
+  text-decoration: underline;
+  cursor: pointer;
+}
+.filter-clear-section:hover {
+  color: var(--pink);
+}
+
+/* Opportunities-page global "Clear all filters" link (plain text link). */
+.filter-clear-all {
+  display: inline-block;
+  margin-top: 4px;
+  font-size: 14px;
+  color: var(--pink);
+  font-weight: 600;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.filter-clear-all:hover {
+  color: var(--purple);
+}
+
+/* Legacy clear button (still used on the Partners page). */
 .filter-clear {
   font-size: 13px;
   color: var(--pink);
@@ -377,6 +433,9 @@ h4 { font-size: 20px; }
 @media (max-width: 1024px) {
   .filter-sidebar {
     position: static;
+    /* Stack above the list on mobile: no fixed height / inner scroll. */
+    max-height: none;
+    overflow-y: visible;
   }
   .filter-sidebar.collapsed .filter-group {
     display: none;

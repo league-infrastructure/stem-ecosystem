@@ -13,6 +13,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const checkboxes = sidebar.querySelectorAll('input[type="checkbox"]');
   const searchInput = sidebar.querySelector('.filter-search');
   const clearBtn = document.getElementById('clear-filters');
+  const sectionClearLinks = sidebar.querySelectorAll('[data-clear-section]');
   const toggleBtn = document.getElementById('filter-toggle-btn');
   const countEl = document.querySelector('.results-count');
 
@@ -30,7 +31,10 @@ document.addEventListener('DOMContentLoaded', () => {
   // Bind events
   checkboxes.forEach(cb => cb.addEventListener('change', () => { applyFilters(); syncToURL(); }));
   searchInput?.addEventListener('input', debounce(() => { applyFilters(); syncToURL(); }, 200));
-  clearBtn?.addEventListener('click', clearAll);
+  clearBtn?.addEventListener('click', (e) => { e.preventDefault(); clearAll(); });
+  sectionClearLinks.forEach(link => {
+    link.addEventListener('click', (e) => { e.preventDefault(); clearSection(link); });
+  });
 
   function applyFilters() {
     const activeFilters = getActiveFilters();
@@ -132,6 +136,18 @@ document.addEventListener('DOMContentLoaded', () => {
     if (searchInput) searchInput.value = '';
     applyFilters();
     history.replaceState(null, '', window.location.pathname);
+  }
+
+  // Reset only the inputs within the filter-group that owns the given link.
+  function clearSection(link) {
+    const group = link.closest('.filter-group');
+    if (!group) return;
+    group.querySelectorAll('input').forEach(input => {
+      if (input.type === 'checkbox') input.checked = false;
+      else input.value = '';
+    });
+    applyFilters();
+    syncToURL();
   }
 
   function debounce(fn, ms) {
