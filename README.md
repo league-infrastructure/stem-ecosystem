@@ -1,202 +1,60 @@
-# astro-template
+# SD STEM Ecosystem
 
-A minimal, production-ready template for starting [Astro](https://astro.build) website projects.
+The production website for [sdstemecosystem.org](https://www.sdstemecosystem.org) — a
+directory of San Diego STEM learning opportunities, partner organizations, robotics teams,
+places and clubs. Built with Astro, deployed as a static site to GitHub Pages.
 
-## Features
+This repo is also the **data publication** point: the JSON under `public/data/` is a public,
+no-auth data contract consumed by other tools and by LLM agents (see `/data-access` and
+`/for-agents` on the live site).
 
-- ⚡ **Minimal Astro setup** — static by default, fast and SEO-friendly
-- 🚀 **GitHub Actions** — automatic build on every push; one-click deploy to GitHub Pages
-- ⚙️ **[dotconfig](https://github.com/ericbusboom/dotconfig)** — layered environment configuration (dev / prod / local overrides)
-- 🐳 **[rundbat](https://github.com/ericbusboom/rundbat)** — Docker-based deployment management for testing and production
-- 📜 **Setup scripts** — get from clone to running in minutes
-
----
-
-## Quick Start
+## Development
 
 ```bash
-# 1. Clone or fork this template
-git clone https://github.com/your-org/your-project.git
-cd your-project
-
-# 2. Run the setup script (installs deps, creates local config)
-./scripts/setup.sh
-
-# 3. Start the dev server
-npm run dev
-# → open http://localhost:4321
+npm install
+npm run dev        # http://localhost:4322
+npm run build      # static output to dist/
+npm run preview    # serve the built output
 ```
 
----
+## Where the data comes from
 
-## Project Structure
+Site content is **not** edited here. A separate repo,
+[partner-scrape](https://github.com/league-infrastructure/partner-scrape), runs the scraping
+pipeline weekly and pushes a data commit to this repo's `master`, which triggers a deploy.
 
-```
-astro-template/
-├── .github/
-│   └── workflows/
-│       ├── build.yml       # Build on every push / PR
-│       └── deploy.yml      # Deploy to GitHub Pages on push to main
-├── config/                 # dotconfig configuration tree
-│   ├── sops.yaml           # SOPS encryption rules (edit with your age key)
-│   ├── rundbat.yaml        # rundbat project config
-│   ├── dev/
-│   │   └── public.env      # Public dev environment variables
-│   ├── prod/
-│   │   └── public.env      # Public prod environment variables
-│   └── local/
-│       └── example/
-│           └── public.env  # Template for personal local overrides
-├── docker/
-│   ├── Dockerfile          # Multi-stage build → Nginx static server
-│   └── docker-compose.yml  # Docker Compose for local/Docker deployment
-├── scripts/
-│   ├── setup.sh            # First-time setup
-│   ├── dev.sh              # Start dev server (with optional dotconfig load)
-│   └── docker-run.sh       # Build and run in Docker
-├── src/
-│   ├── layouts/
-│   │   └── Layout.astro    # Base HTML layout
-│   └── pages/
-│       └── index.astro     # Home page
-├── public/
-│   └── favicon.svg
-├── astro.config.mjs
-├── package.json
-└── tsconfig.json
-```
+| Path | Owner | Notes |
+|---|---|---|
+| `src/data/partners.json` | **Humans — edit here** | Hand-curated partner roster. A pipeline *input*, not an output. |
+| `src/data/opportunities.json`, `teams.json`, `places.json`, `clubs.json`, `ads.json`, `scrape-meta.json` | Pipeline | Regenerated each run; do not hand-edit. |
+| `src/data/yield-history.json` | Pipeline | Per-run state used to detect source yield regressions. |
+| `public/data/**` | Pipeline | The published data contract (partner roster + per-partner event files). |
+| `public/images/opportunities/` | Pipeline | Self-hosted event images, content-hash named. |
+| `public/images/logos/` | Pipeline | Partner logos. |
 
----
+The curated roster lives here because the pipeline reads it from its `--site-dir`, which is
+this repo. Keeping a second copy elsewhere is what caused runs to join against a stale
+roster and silently drop partner geocodes and logos.
 
-## GitHub Pages Deployment
+## Deployment
 
-1. In your repository settings → **Pages**, set the source to **GitHub Actions**.
-2. Push to `main` — the `deploy.yml` workflow builds and publishes the site automatically.
-3. Update `astro.config.mjs` with your `site` and `base` if needed:
+**Production** — `.github/workflows/deploy.yml` builds and deploys to GitHub Pages on every
+push to `master`. It passes `--site` and `--base` from `actions/configure-pages`, so absolute
+URLs in `llms.txt` and `/for-agents` derive from whatever origin actually serves the build
+(see `src/pages/llms.txt.ts`). Nothing hardcodes a domain.
 
-```js
-export default defineConfig({
-  site: 'https://your-username.github.io',
-  base: '/your-repo-name',
-});
-```
-
----
-
-## Configuration with dotconfig
-
-This template uses [dotconfig](https://github.com/ericbusboom/dotconfig) to manage a layered `.env` file from multiple source files.
-
-### Install dotconfig
+**Beta preview** — a Docker container serving a production build, for reviewing a change at a
+real URL before it ships:
 
 ```bash
-pipx install dotconfig
+cp docker/.env.example docker/.env    # set SITE_HOSTNAME and SITE_URL
+docker compose -f docker/docker-compose.yml up -d --build
 ```
 
-### Configuration layout
+`SITE_URL` is baked in at build time; if it does not match how the beta is actually reached,
+the beta will advertise data URLs that do not resolve.
 
-```
-config/
-  dev/public.env           ← committed public vars for dev
-  prod/public.env          ← committed public vars for prod
-  local/<yourname>/        ← your personal overrides (gitignored)
-    public.env
-    secrets.env            ← SOPS-encrypted secrets (optional)
-  sops.yaml                ← SOPS key rules
-```
+## Fonts and assets
 
-### Setup your local config
-
-```bash
-# Copy the example local config
-cp -r config/local/example config/local/<yourname>
-# Edit your overrides
-$EDITOR config/local/<yourname>/public.env
-
-# Generate .env
-dotconfig load -d dev -l <yourname>
-```
-
-### Load / save config
-
-```bash
-# Load dev config with your local overrides
-dotconfig load -d dev -l <yourname>
-
-# Load prod config
-dotconfig load -d prod
-
-# After editing .env directly, save it back to the source files
-dotconfig save
-```
-
-The generated `.env` is gitignored — the source files in `config/` are what you commit.
-
----
-
-## Docker Deployment with rundbat
-
-[rundbat](https://github.com/ericbusboom/rundbat) manages Docker-based deployment environments.
-
-### Install rundbat
-
-```bash
-pipx install rundbat
-```
-
-### Quick Docker commands
-
-```bash
-# Detect environment
-rundbat discover
-
-# Initialize rundbat in this project
-rundbat init
-
-# Build and run in Docker via helper script
-./scripts/docker-run.sh up       # start (builds image first)
-./scripts/docker-run.sh down     # stop
-./scripts/docker-run.sh logs     # follow logs
-
-# Or use rundbat directly
-rundbat start dev
-rundbat stop dev
-rundbat health dev
-```
-
-The site will be available at `http://localhost:8080` by default.
-
-### Adding a database
-
-If your project needs a database, uncomment the `db` service in `docker/docker-compose.yml`, then use rundbat to provision and manage it:
-
-```bash
-rundbat add-service postgres
-rundbat create-env dev
-rundbat get-config dev    # prints the DATABASE_URL
-```
-
----
-
-## Scripts Reference
-
-| Script | Purpose |
-|---|---|
-| `./scripts/setup.sh [name]` | First-time setup: install deps, create local config, discover rundbat |
-| `./scripts/dev.sh [name]` | Load dotconfig and start the Astro dev server |
-| `./scripts/docker-run.sh [up\|down\|build\|logs]` | Manage Docker containers |
-
----
-
-## Customization
-
-- **Add pages**: create `.astro` (or `.md`) files in `src/pages/`
-- **Add components**: place reusable components in `src/components/`
-- **Add integrations**: `npx astro add <integration>` (e.g., `tailwind`, `react`, `mdx`)
-- **Add a backend**: uncomment the `db` service in `docker/docker-compose.yml` and configure rundbat
-
----
-
-## License
-
-MIT 
+Fonts live in `src/fonts/`, not `public/fonts/`, so Vite emits base-aware hashed assets.
+Absolute `/fonts/...` paths break under a non-root base path — don't reintroduce them.

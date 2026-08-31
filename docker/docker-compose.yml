@@ -1,12 +1,28 @@
+# This compose file runs the beta preview of the site: a container serving
+# a production build, so a change can be reviewed at a real URL before it
+# goes out to production GitHub Pages.
+#
+# Copy .env.example to .env and set SITE_HOSTNAME to the beta host before
+# bringing it up. The Caddy labels publish the container to an external
+# `caddy` network, which must already exist on the host.
+#
+#   docker compose -f docker/docker-compose.yml up -d --build
+#   docker compose -f docker/docker-compose.yml logs -f
+#   docker compose -f docker/docker-compose.yml down
+#
+# The build bakes SITE_URL into the static output: absolute URLs in
+# llms.txt and /for-agents derive from it (see src/pages/llms.txt.ts), so
+# a beta container built without it will advertise the wrong origin.
 services:
   web:
+    container_name: stem-ecosystem-beta
     build:
       context: ..
       dockerfile: docker/Dockerfile
+      args:
+        SITE_URL: ${SITE_URL:-http://localhost:8080}
     ports:
       - "${PORT:-8080}:80"
-    environment:
-      - NODE_ENV=${NODE_ENV:-production}
     labels:
       caddy: ${SITE_HOSTNAME:-}
       caddy.reverse_proxy: "{{upstreams 80}}"
@@ -17,19 +33,3 @@ services:
 networks:
   caddy:
     external: true
-
-# Uncomment to add a database backend (requires rundbat setup)
-# See: https://github.com/ericbusboom/rundbat
-#
-#  db:
-#    image: postgres:16-alpine
-#    environment:
-#      POSTGRES_DB: ${DB_NAME:-app}
-#      POSTGRES_USER: ${DB_USER:-app}
-#      POSTGRES_PASSWORD: ${DB_PASSWORD:-changeme}
-#    volumes:
-#      - pgdata:/var/lib/postgresql/data
-#    restart: unless-stopped
-#
-#volumes:
-#  pgdata:
