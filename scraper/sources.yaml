@@ -1,0 +1,75 @@
+# Source registry for the SD STEM Ecosystem event scraper.
+#
+# Each source needs:
+#   key           unique short id, used in slugs and logs
+#   adapter       one of: fleet, localist, tribe, bibliocommons
+#   partner_name  must EXACTLY match a name in src/data/partners.json so events
+#                 link to the partner page and inherit its logo
+#   defaults      values merged into every event from this source (site taxonomy)
+#   stem_only     if true, keep only events matching STEM keywords (for general-
+#                 purpose calendars like libraries)
+#
+# Adapter-specific config is documented in each adapter module.
+
+sources:
+  - key: fleet
+    adapter: fleet
+    enabled: true
+    url: https://www.fleetscience.org/events
+    partner_name: Fleet Science Center
+    defaults:
+      opportunity_type: Out-of-school Programs
+      areas_of_interest: [General Science]
+
+  - key: birch
+    adapter: localist
+    enabled: true
+    url: https://calendar.ucsd.edu/api/2/events/search
+    params:
+      search: Birch Aquarium
+      days: 180
+      pp: 100
+    require_location: Birch Aquarium
+    partner_name: Birch Aquarium at Scripps Institution of Oceanography
+    defaults:
+      opportunity_type: Out-of-school Programs
+      areas_of_interest: [Biology / LifeSciences, Earth Science/Ecology]
+
+  - key: living-coast
+    adapter: tribe
+    enabled: true
+    base_url: https://www.thelivingcoast.org
+    partner_name: Living Coast Discovery Center
+    defaults:
+      opportunity_type: Out-of-school Programs
+      areas_of_interest: [Biology / LifeSciences, Earth Science/Ecology]
+
+  - key: cmod
+    adapter: tribe
+    enabled: true
+    base_url: https://visitcmod.org
+    partner_name: San Diego Children's Discovery Museum
+    defaults:
+      opportunity_type: Out-of-school Programs
+      areas_of_interest: [General Science]
+      age_grade_level: [Pre-K, TK/K, Grades 1-2, Family]
+
+  - key: sdcl
+    adapter: bibliocommons
+    enabled: true
+    library: sdcl
+    stem_only: true
+    partner_name: San Diego County Library
+    defaults:
+      opportunity_type: Out-of-school Programs
+      cost_range: Free
+
+  - key: sdpl
+    adapter: bibliocommons
+    enabled: true
+    library: sandiego
+    stem_only: true
+    partner_name: San Diego Public Library
+    defaults:
+      opportunity_type: Out-of-school Programs
+      cost_range: Free
