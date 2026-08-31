@@ -1,3 +1,7 @@
+---
+status: done
+---
+
 # Filter sidebar must scroll independently of the opportunities list
 
 **Reported by stakeholder (Eric), 2026-07-20, from the live Opportunities page.**
@@ -13,3 +17,13 @@ the list scrolls on its own.
 
 - Component: `src/pages/opportunities/index.astro` (two-column layout) + CSS.
 - Make sure it degrades gracefully on mobile (filters stack above the list).
+
+## Resolution
+
+Resolved. The sidebar is `position: sticky` with its own `overflow-y: auto`
+in `src/styles/global.css`, and unsets to `visible` at the mobile breakpoint.
+
+Verified 2026-08-31 during the repo split, when this repo's issues moved
+from `docs/issues/` into `clasi/issues/`. Numbers 001-006 are this site's own
+original sequence and are unrelated to the shared partner-scrape numbering
+used by issues 49 and up.

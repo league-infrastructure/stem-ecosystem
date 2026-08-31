@@ -1,3 +1,7 @@
+---
+status: done
+---
+
 # Event descriptions must render Markdown (and decode HTML entities)
 
 **Reported by stakeholder (Eric), 2026-07-20, from the live beta.**
@@ -33,3 +37,13 @@ Most descriptions are already plain text (adapters strip HTML). The
 Markdown mainly comes from first-party feeds (LeagueSync/Pike13). Decoding
 entities could alternatively be done once at scrape time in
 `normalize/`, but rendering-side handling covers all sources uniformly.
+
+## Resolution
+
+Resolved. `src/lib/markdown.ts` provides `renderDescriptionHtml()`, used by
+`src/pages/opportunities/[slug].astro`.
+
+Verified 2026-08-31 during the repo split, when this repo's issues moved
+from `docs/issues/` into `clasi/issues/`. Numbers 001-006 are this site's own
+original sequence and are unrelated to the shared partner-scrape numbering
+used by issues 49 and up.

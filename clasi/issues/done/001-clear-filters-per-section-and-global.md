@@ -1,3 +1,7 @@
+---
+status: done
+---
+
 # Filters: per-section "Clear" links + a global "Clear all filters"
 
 **Reported by stakeholder (Eric), 2026-07-20, from the live Opportunities page.**
@@ -14,3 +18,13 @@ list that resets every section to default.
   `src/scripts/filters.js` (state reset + re-filter).
 - Per-section clear resets only that facet group's checkboxes/inputs and
   re-runs filtering; global clear resets all.
+
+## Resolution
+
+Resolved. `OpportunityFilters.astro` carries `data-clear-section` and
+`data-clear-all` hooks and `src/scripts/filters.js` implements the resets.
+
+Verified 2026-08-31 during the repo split, when this repo's issues moved
+from `docs/issues/` into `clasi/issues/`. Numbers 001-006 are this site's own
+original sequence and are unrelated to the shared partner-scrape numbering
+used by issues 49 and up.

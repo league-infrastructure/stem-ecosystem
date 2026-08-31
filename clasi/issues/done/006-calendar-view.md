@@ -1,3 +1,7 @@
+---
+status: done
+---
+
 # Add a Calendar view (List / Calendar / Map)
 
 **Reported by stakeholder (Eric), 2026-07-20.**
@@ -27,3 +31,13 @@ a third view: **Calendar** — so the toggle is **List · Calendar · Map**.
   hand-rolled month grid is fine — no heavy calendar dependency needed.
 - Applies to both beta and production; keep components in sync when
   promoting.
+
+## Resolution
+
+Resolved. `src/components/CalendarView.astro` exists and the opportunities
+page exposes all three `data-view` toggles (grid, calendar, map).
+
+Verified 2026-08-31 during the repo split, when this repo's issues moved
+from `docs/issues/` into `clasi/issues/`. Numbers 001-006 are this site's own
+original sequence and are unrelated to the shared partner-scrape numbering
+used by issues 49 and up.

@@ -1,3 +1,7 @@
+---
+status: done
+---
+
 # Don't show past dates: recurring events display their first-ever occurrence
 
 **Reported by stakeholder (Eric), 2026-07-20, from the live beta.**
@@ -31,3 +35,16 @@ Adventure @ USS Midway" start 2026-02-07 (ends 2026-08-22).
 
 Net: nothing on the site should display a date earlier than today.
 Applies to both beta and production.
+
+## Resolution
+
+Data half resolved upstream: `normalize/collapse.py`'s `_span()` sets a
+collapsed record's `date_start` to the next upcoming occurrence, taking live
+data from 14 bad records to 1. The remaining website half -- guaranteeing the
+site never renders a past date regardless of what the data contains -- is
+reopened as issue 56, which supersedes this one.
+
+Verified 2026-08-31 during the repo split, when this repo's issues moved
+from `docs/issues/` into `clasi/issues/`. Numbers 001-006 are this site's own
+original sequence and are unrelated to the shared partner-scrape numbering
+used by issues 49 and up.

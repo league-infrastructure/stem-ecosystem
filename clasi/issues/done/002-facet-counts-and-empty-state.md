@@ -1,3 +1,7 @@
+---
+status: done
+---
+
 # Filters: show result counts per option; make empty options obvious
 
 **Reported by stakeholder (Eric), 2026-07-20, from the live Opportunities page.**
@@ -20,3 +24,12 @@ Today you can click a facet and get an empty list — frustrating.
   values are empty — root cause is the data (all events default to
   "Out-of-school Programs"); tracked in the `partner-scrape` repo issue
   "Classify opportunity_type during enrichment".
+
+## Resolution
+
+Resolved. Facet counts are rendered in `OpportunityFilters.astro`.
+
+Verified 2026-08-31 during the repo split, when this repo's issues moved
+from `docs/issues/` into `clasi/issues/`. Numbers 001-006 are this site's own
+original sequence and are unrelated to the shared partner-scrape numbering
+used by issues 49 and up.
