@@ -2,7 +2,9 @@
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import OpportunityFilters from '../../components/OpportunityFilters.astro';
 import OpportunityCard from '../../components/OpportunityCard.astro';
+import CalendarView from '../../components/CalendarView.astro';
 import opportunities from '../../data/opportunities.json';
+import { isMappable } from '../../lib/helpers';
 
 // Sort by date_start ascending (soonest first), undated at end
 const sorted = [...opportunities].sort((a, b) => {
@@ -11,6 +13,8 @@ const sorted = [...opportunities].sort((a, b) => {
   if (!b.date_start) return -1;
   return new Date(a.date_start).getTime() - new Date(b.date_start).getTime();
 });
+
+const mappableCount = sorted.filter(opp => isMappable(opp.latitude, opp.longitude)).length;
 ---
 
 <BaseLayout title="Find STEM Opportunities | SD STEM Ecosystem">
@@ -26,12 +30,19 @@ const sorted = [...opportunities].sort((a, b) => {
         <span class="results-count">Showing {sorted.length} of {sorted.length}</span>
         <div class="view-toggle">
           <button class="active" data-view="grid">List</button>
+          <button data-view="calendar">Calendar</button>
           <button data-view="map">Map</button>
         </div>
       </div>
       <div class="results-grid" id="results-grid">
         {sorted.map(opp => <OpportunityCard opportunity={opp} />)}
       </div>
+      <div class="calendar-container" id="calendar-container" style="display:none;">
+        <CalendarView opportunities={sorted} />
+      </div>
+      <p class="results-count map-note" id="map-note" style="display:none;">
+        Showing {mappableCount} of {sorted.length} opportunities with a location on the map.
+      </p>
       <div class="map-container" id="map-container" style="display:none;"></div>
     </div>
   </div>
@@ -40,25 +51,27 @@ const sorted = [...opportunities].sort((a, b) => {
 <script src="../../scripts/filters.js"></script>
 
 <script>
-  // Map/list toggle
+  import { isMappable } from '../../lib/helpers';
+
+  // List/Calendar/Map toggle
   const viewBtns = document.querySelectorAll('.view-toggle button');
   const grid = document.getElementById('results-grid');
+  const calendarContainer = document.getElementById('calendar-container');
   const mapContainer = document.getElementById('map-container');
+  const mapNote = document.getElementById('map-note');
 
   viewBtns.forEach(btn => {
     btn.addEventListener('click', () => {
       viewBtns.forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
-      if (btn.dataset.view === 'map') {
-        if (grid) grid.style.display = 'none';
-        if (mapContainer) {
-          mapContainer.style.display = 'block';
-          initMap();
-        }
-      } else {
-        if (grid) grid.style.display = '';
-        if (mapContainer) mapContainer.style.display = 'none';
-      }
+
+      const view = (btn as HTMLElement).dataset.view;
+      if (grid) grid.style.display = view === 'grid' ? '' : 'none';
+      if (calendarContainer) calendarContainer.style.display = view === 'calendar' ? '' : 'none';
+      if (mapContainer) mapContainer.style.display = view === 'map' ? 'block' : 'none';
+      if (mapNote) (mapNote as HTMLElement).style.display = view === 'map' ? '' : 'none';
+
+      if (view === 'map') initMap();
     });
   });
 
@@ -94,6 +107,7 @@ const sorted = [...opportunities].sort((a, b) => {
         const lat = parseFloat(card.dataset.lat);
         const lng = parseFloat(card.dataset.lng);
         if (isNaN(lat) || isNaN(lng)) return;
+        if (!isMappable(lat, lng)) return;
         if (lat < SD_BOUNDS.latMin || lat > SD_BOUNDS.latMax || lng < SD_BOUNDS.lngMin || lng > SD_BOUNDS.lngMax) return;
         const title = card.querySelector('h3')?.textContent || '';
         const href = card.querySelector('h3 a')?.getAttribute('href') || '#';
@@ -116,5 +130,9 @@ const sorted = [...opportunities].sort((a, b) => {
   .hero-sm p {
     margin-top: 8px;
     opacity: 0.85;
+  }
+
+  .map-note {
+    margin-bottom: 12px;
   }
 </style>

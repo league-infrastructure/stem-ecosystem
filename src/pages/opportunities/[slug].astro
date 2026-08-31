@@ -1,6 +1,7 @@
 ---
 import BaseLayout from '../../layouts/BaseLayout.astro';
-import { getLogoPath, formatDateRange } from '../../lib/helpers';
+import { resolveImage, formatDateRange, isMappable } from '../../lib/helpers';
+import { renderDescriptionHtml } from '../../lib/markdown';
 import opportunities from '../../data/opportunities.json';
 import partners from '../../data/partners.json';
 
@@ -12,12 +13,17 @@ export function getStaticPaths() {
 }
 
 const { opportunity: opp } = Astro.props;
-const logoPath = getLogoPath(opp.logo_src);
+const base = import.meta.env.BASE_URL.replace(/\/+$/, ''); // "" or "/partner-scrape"
+// Fallback chain (event image -> partner logo -> placeholder) resolved by
+// one shared helper -- see sprint 008 Design Rationale / SUC-009.
+const imagePath = resolveImage(opp.image_src, opp.logo_src);
+const hasEventImage = Boolean(opp.image_src);
 const dateRange = formatDateRange(opp.date_start, opp.date_end);
 
 // Find matching partner
 const partner = partners.find(p => p.name === opp.partner_name);
-const hasLocation = opp.latitude && opp.longitude && !isNaN(parseFloat(opp.latitude));
+const hasLocation = isMappable(opp.latitude, opp.longitude);
+const descriptionHtml = renderDescriptionHtml(opp.description);
 ---
 
 <BaseLayout
@@ -25,14 +31,19 @@ const hasLocation = opp.latitude && opp.longitude && !isNaN(parseFloat(opp.latit
   description={opp.description?.slice(0, 160)}
 >
   <div class="detail-page">
-    <a href="/opportunities" class="back-link">← Back to Opportunities</a>
+    <a href={`${base}/opportunities`} class="back-link">← Back to Opportunities</a>
 
     <div class="detail-header">
       <div class="detail-partner-row">
-        <img src={logoPath} alt={opp.partner_name} class="detail-logo" />
+        <img
+          src={imagePath}
+          alt={hasEventImage ? opp.title : opp.partner_name}
+          class="detail-logo"
+          data-event-image={hasEventImage ? 'true' : undefined}
+        />
         <div>
           {partner
-            ? <a href={`/partners/${partner.id}`} class="detail-partner-link">{opp.partner_name}</a>
+            ? <a href={`${base}/partners/${partner.id}`} class="detail-partner-link">{opp.partner_name}</a>
             : <span class="detail-partner-link">{opp.partner_name}</span>
           }
         </div>
@@ -42,7 +53,7 @@ const hasLocation = opp.latitude && opp.longitude && !isNaN(parseFloat(opp.latit
 
     <div class="detail-body">
       <div class="detail-content">
-        <p>{opp.description}</p>
+        <div class="detail-description" set:html={descriptionHtml} />
 
         {opp.link && (
           <div class="mt-3">
@@ -128,6 +139,13 @@ const hasLocation = opp.latitude && opp.longitude && !isNaN(parseFloat(opp.latit
             <>
               <dt>Location</dt>
               <dd>{opp.location}</dd>
+            </>
+          )}
+
+          {opp.eligibility && (
+            <>
+              <dt>Eligibility</dt>
+              <dd>{opp.eligibility}</dd>
             </>
           )}
         </dl>
