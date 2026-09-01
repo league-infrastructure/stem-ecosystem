@@ -47,6 +47,35 @@ repo. It does not shrink history, so the 405 MB already committed stays
 unless the history is rewritten — a separate decision, and not one to make
 casually on a repo with a live deploy.
 
+## Blocker: `data/` is not yet a complete mirror
+
+Do not cut over until partner-scrape's `data/images/opportunities/` is
+seeded with the historical images. Measured against `data/` at partner-scrape
+commit `f3d3005`:
+
+- `data/opportunities.json` is clean — all 143 referenced images present,
+  zero missing.
+- The **per-partner event files are not**. Across
+  `data/partners/*/events.json` and `past-events.json`, 449 images are
+  referenced and **172 are absent** from `data/images/opportunities/`.
+- All 172 exist in this repo's `public/images/opportunities/` today. None
+  are lost anywhere — but this repo is currently their only home.
+
+The cause is benign: the downloader fetches images for the run's current
+opportunities, so a single run yields only that run's images (375). This
+repo's 631 accumulated across many runs. `data/` was populated from one run,
+so it is a snapshot, not the accumulated set.
+
+The consequence is not benign. Cutting over to a fetch of `data/` and
+dropping the images tracked here would 404 those 172 for every consumer of
+the published per-partner event files, and for any past-event rendering on
+the site. Partner-scrape needs to seed `data/images/opportunities/` from
+this repo's set once, after which its own runs keep it whole.
+
+Seeding is partner-scrape's to do, not this repo's. Copying files into that
+checkout from here would be the same cross-repo reach-in this whole change
+exists to remove — in the opposite direction.
+
 ## Proposed approach
 
 Fetch partner-scrape's `data/` at build time, mirroring the pattern that
