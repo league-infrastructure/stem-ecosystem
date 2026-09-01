@@ -47,11 +47,58 @@ repo. It does not shrink history, so the 405 MB already committed stays
 unless the history is rewritten — a separate decision, and not one to make
 casually on a repo with a live deploy.
 
-## Blocker: `data/` is not yet a complete mirror
+## Status: built and verified, reverted, waiting on an upstream push
 
-Do not cut over until partner-scrape's `data/images/opportunities/` is
-seeded with the historical images. Measured against `data/` at partner-scrape
-commit `f3d3005`:
+The implementation is done and works. It was merged as `8b7ad08`, failed in
+CI, and was reverted in `4c758b0`. Re-landing is a revert of that revert —
+no code changes needed.
+
+**Why it failed:** partner-scrape's work is unpushed. Its `origin/master` is
+at `703babd` with 95 commits (sprints 019-026, all of the data publishing)
+existing only on a local checkout. CI fetches from GitHub, not from the
+sibling directory, so the fetch found nothing.
+
+The failure mode was less obvious than it should have been because
+`origin/master` **does** have a `data/` directory — the legacy one holding
+`partners_viable.csv`. An existence check on `data/` passes against the
+remote while containing nothing the site needs, so the script failed on a
+specific missing file rather than a clean "no data published yet". If this
+is re-verified later, check for `data/opportunities.json`, not `data/`.
+
+**What was verified**, against a real `data/` at partner-scrape `ed05a78`:
+334 opportunities, 547 images, 476 referenced, zero missing; 857 pages
+built; every route 200 in preview; the curated `src/data/partners.json`
+byte-identical before and after the fetch; and a from-scratch clean checkout
+(git worktree, no data files but `partners.json`) fetching and building
+successfully — the exact path CI takes.
+
+**Precondition for re-landing:** `data/opportunities.json` resolves on
+partner-scrape's `origin/master`.
+
+## Open: what triggers a data refresh
+
+Worth settling before or with the re-land. Under the old arrangement the
+scraper pushed a data commit here, which triggered this repo's deploy, so
+new data reached production automatically. Under a build-time fetch, data
+only reaches production when *this* repo deploys — which happens on pushes
+here. A scrape alone changes nothing visible.
+
+That is a reasonable review gate, but it is a behavior change and it is
+currently unstated. Without something to trigger it, the site silently
+serves whatever data it last built with. Options: a `repository_dispatch`
+from partner-scrape's scheduled run, a scheduled `workflow_dispatch` here,
+or accepting manual deploys and documenting that data is as fresh as the
+last deploy.
+
+## Blocker (resolved 2026-09-01): `data/` was not a complete mirror
+
+Resolved by partner-scrape's sprint 026 (`ed05a78`), which backfilled the
+172 and added `dev/backfill_missing_images.py` as a reusable integrity gate.
+Independently re-verified here: 547 images present, 449 + 143 references,
+zero missing. Kept for the record because the shape of the problem recurs
+whenever `data/` is rebuilt from a single run.
+
+Originally measured against `data/` at partner-scrape commit `f3d3005`:
 
 - `data/opportunities.json` is clean — all 143 referenced images present,
   zero missing.
