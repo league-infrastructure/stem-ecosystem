@@ -62,11 +62,29 @@ domain, but equally covers a legitimate site that is image-heavy,
 JS-rendered, or just terse. Those teams have a perfectly good website a
 visitor wants.
 
-The current numbers make the cost concrete: 52 of 278 teams are
+The current numbers make the cost concrete. Of 278 teams, 52 are
 `website_status == "confirmed"` and 80 carry a URL, while partner-scrape's
-run generated descriptions for 24. Gating the link on a generated blurb
-would hide a working website link from roughly 28 teams. A rare parked
-domain slipping through is a much smaller harm than that, and it is
+extraction run generated 24 descriptions. Gating the link on a generated
+blurb would hide a working website link from roughly 28 teams.
+
+**`description_status == "none"` is especially unsafe as a link gate**,
+because it means "never attempted," which is not the same as "has no
+website." The published Aug 31 breakdown shows why:
+
+| League | Teams | confirmed | unverified | none |
+|---|---|---|---|---|
+| FRC | 78 | 23 | 28 | 27 |
+| FTC | 152 | 29 | 0 | 123 |
+| FLL | 48 | 0 | 0 | 48 |
+
+partner-scrape's extraction run covered FTC and FLL only — FRC needs a
+`TBA_KEY` that was not loaded in that session — so its 29 confirmed teams
+are exactly the FTC column, and the 23 confirmed FRC teams were never
+attempted. Until a credentialed run happens, those 23 publish as
+`description_status: "none"` while having confirmed, working websites. A
+link gated on the description field would hide every one of them.
+
+A rare parked domain slipping through is a much smaller harm, and it is
 `website_status`'s job to catch anyway — if `confirmed` is admitting parked
 domains, fix it there rather than proxying link-worthiness through an
 unrelated signal.
