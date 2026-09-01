@@ -85,15 +85,34 @@ are public, so a read-only `actions/checkout` with `repository:` needs no
 credential.
 
 Sketch, in `.github/workflows/deploy.yml` before the Astro build:
+`actions/checkout` partner-scrape into a temp path, copy its `data/` into
+place per the mapping below, then build. Then stop tracking the generated
+files here, keeping only what this repo authors.
 
-- `actions/checkout` partner-scrape into a temp path.
-- Copy its `data/` into the places the site reads: `src/data/` for the build
-  inputs, `public/data/` and `public/images/opportunities/` for the
-  published artifacts.
-- Build.
+### The mapping
 
-Then stop tracking the generated files here, keeping only what this repo
-actually authors.
+`data/` is flat; this repo's layout is not, and the two are not a
+one-to-one copy. Verified against partner-scrape `f3d3005`:
+
+| From `data/` | To | Notes |
+|---|---|---|
+| `opportunities.json`, `scrape-meta.json`, `ads.json`, `yield-history.json` | `src/data/` | build inputs only |
+| `teams.json`, `places.json`, `clubs.json` | `src/data/` **and** `public/data/` | this repo keeps byte-identical copies in both; one source feeds two destinations |
+| `partners.json` | `public/data/partners.json` **only** | see the trap below |
+| `partners/<slug>/{events,past-events}.json` | `public/data/partners/<slug>/` | 211 dirs |
+| `images/opportunities/*` | `public/images/opportunities/` | blocked on seeding, above |
+
+**The trap: never copy `data/partners.json` into `src/data/`.** The two
+files share a basename and are different things.
+`data/partners.json` is the *generated* roster envelope
+(`{generated_at, partner_count, partners[]}`, currently 211).
+`src/data/partners.json` is the *hand-curated* flat array this repo
+authors, which the pipeline reads as an input and never writes. A naive
+`cp data/*.json src/data/` would overwrite the curated roster with an
+envelope of a different shape — breaking the build, and destroying the
+one data file in this repo that is not reproducible from upstream.
+
+So the fetch must copy an explicit file list. Do not glob.
 
 Points to settle while implementing:
 
