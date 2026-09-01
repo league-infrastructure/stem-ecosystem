@@ -1,19 +1,6 @@
 # Dependencies
 node_modules/
 
-# Data published by partner-scrape and pulled in by scripts/fetch-data.sh.
-# Not tracked here: the pipeline's data/ is the source of truth, and a second
-# tracked copy is what let a stale roster silently corrupt scraper runs.
-# src/data/partners.json is the exception -- it is hand-curated in this repo
-# and read by the pipeline, so it stays tracked.
-src/data/*.json
-!src/data/partners.json
-public/data/
-public/images/opportunities/
-
-# Transient checkout made by the CI fetch step
-.partner-scrape/
-
 # Build output
 dist/
 .astro/
@@ -41,4 +28,3 @@ npm-debug.log*
 *.pid
 *.seed
 *.pid.lock
-# dotconfig — assembled env files contain decrypted secrets
