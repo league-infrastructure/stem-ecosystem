@@ -41,31 +41,44 @@ the absence of the block.
   facet in `src/components/TeamFilters.astro` agree with whatever condition
   the detail page settles on — three different answers to "does this team
   have a website" is the underlying defect.
-- Add the blurb block to the detail page: the paragraph, an attribution
-  line, and the fetch date. Render nothing when the field is absent.
+- Add the blurb block to the detail page: `description`, the attribution
+  line, and `description_fetched_at`. Render nothing unless
+  `description_status == "generated"` — do not test `description` for
+  non-emptiness, since the status field is the explicit signal and the
+  string is `""` in both the `unavailable` and `none` cases.
 
-**Converge the three surfaces on one signal.** Once partner-scrape's
-extraction pass lands, `teams.json` carries provenance and a fetch date —
-evidence the pipeline actually reached the team's site. That is a better
-basis for all three surfaces than each deriving its own answer, and adopting
-it is the actual fix for the inconsistency rather than patching three
-conditions to agree.
+**Converge the three surfaces on `website_status`.** The badge, the facet,
+and the detail-page link all answer one question — does this team have a
+website worth linking — so they should read one field, and `website_status`
+is that field. The inconsistency is three independent derivations of the
+same answer; the fix is deleting two of them, not adding a condition.
 
-"We fetched this site" and "this link is worth showing a visitor" are not
-the same claim, though — a parked or expired domain can return 200 and yield
-no usable text, which is the case sprint 013's dead-link guard was added
-for. partner-scrape's sprint 021 is emitting these as two distinct,
-independently inspectable fields rather than collapsing them into a
-blurb-present check, which makes the split clean:
+**Do not gate the link on the blurb.** Sprint 021 adds `description_status`
+(`generated` / `unavailable` / `none`), and it is tempting to treat it as
+the link's condition since a blurb proves the site had real content. That
+would be wrong, and would recreate the exact defect this issue exists to fix.
+`unavailable` means "nothing publishable came of it" — which covers a parked
+domain, but equally covers a legitimate site that is image-heavy,
+JS-rendered, or just terse. Those teams have a perfectly good website a
+visitor wants.
 
-- The badge, the "Has a Website" facet, and the detail-page link all key off
-  the **usable-content** signal. One condition, three surfaces, no
-  independent derivations.
-- The **fetch-success** signal stays with the dead-link guard, which is the
-  question that guard was actually asking.
+The current numbers make the cost concrete: 52 of 278 teams are
+`website_status == "confirmed"` and 80 carry a URL, while partner-scrape's
+run generated descriptions for 24. Gating the link on a generated blurb
+would hide a working website link from roughly 28 teams. A rare parked
+domain slipping through is a much smaller harm than that, and it is
+`website_status`'s job to catch anyway — if `confirmed` is admitting parked
+domains, fix it there rather than proxying link-worthiness through an
+unrelated signal.
 
-So what goes away is the third independent derivation, not the guard. Wait
-for the real field names before implementing; see References.
+So the mapping is:
+
+- Badge, "Has a Website" facet, detail-page link → `website_status`.
+- The blurb block → `description_status == "generated"`.
+- The "as of" line → `description_fetched_at`.
+
+Those are two independent questions and should stay two independent
+conditions.
 
 **Show the fetch date, quietly.** Resolved rather than left open: render it
 alongside the attribution, in the register of the existing staleness cues
@@ -93,7 +106,11 @@ if links are missing because status was never set to `confirmed` rather than
 because the guard is wrong, that is fixed upstream and this issue shrinks to
 the blurb rendering.
 
-The fetch-success and usable-content field names come from sprint 021's
-extraction tickets and are not settled as of this writing — confirm them
-against a real `teams.json` before wiring the three surfaces, rather than
-guessing from this issue.
+Field shape from sprint 021, confirmed 2026-08-31: `description`,
+`description_status` (`generated` / `unavailable` / `none`),
+`description_provenance` (`team_website` or `""`), and
+`description_fetched_at` (ISO-8601 UTC, or `""`). `website_status` is
+unchanged and stays independent. Verify against a real `teams.json` once
+the pipeline has published these — the counts quoted above come from the
+pre-extraction Aug 31 data plus partner-scrape's run report, not from a
+published file carrying both fields.
