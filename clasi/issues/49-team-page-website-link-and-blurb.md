@@ -51,12 +51,21 @@ basis for all three surfaces than each deriving its own answer, and adopting
 it is the actual fix for the inconsistency rather than patching three
 conditions to agree.
 
-One caveat before treating it as sufficient on its own: "we fetched this
-site" and "this link is worth showing a visitor" are not the same claim. A
-parked or expired domain can return 200 and yield no usable text, which is
-the case sprint 013's dead-link guard was added for. So the guard likely
-still earns its place as a second condition — what should go is the *third*
-independent derivation, not the guard itself.
+"We fetched this site" and "this link is worth showing a visitor" are not
+the same claim, though — a parked or expired domain can return 200 and yield
+no usable text, which is the case sprint 013's dead-link guard was added
+for. partner-scrape's sprint 021 is emitting these as two distinct,
+independently inspectable fields rather than collapsing them into a
+blurb-present check, which makes the split clean:
+
+- The badge, the "Has a Website" facet, and the detail-page link all key off
+  the **usable-content** signal. One condition, three surfaces, no
+  independent derivations.
+- The **fetch-success** signal stays with the dead-link guard, which is the
+  question that guard was actually asking.
+
+So what goes away is the third independent derivation, not the guard. Wait
+for the real field names before implementing; see References.
 
 **Show the fetch date, quietly.** Resolved rather than left open: render it
 alongside the attribution, in the register of the existing staleness cues
@@ -83,3 +92,8 @@ it reports the `website_status` distribution across current teams data, so
 if links are missing because status was never set to `confirmed` rather than
 because the guard is wrong, that is fixed upstream and this issue shrinks to
 the blurb rendering.
+
+The fetch-success and usable-content field names come from sprint 021's
+extraction tickets and are not settled as of this writing — confirm them
+against a real `teams.json` before wiring the three surfaces, rather than
+guessing from this issue.
