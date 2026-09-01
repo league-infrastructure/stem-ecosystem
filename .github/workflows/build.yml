@@ -17,6 +17,18 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # The scraper publishes to its own data/ and this repo pulls; the
+      # generated data files are not tracked here, so the build cannot run
+      # without this step. See clasi/issues/57.
+      - name: Checkout partner-scrape data
+        uses: actions/checkout@v4
+        with:
+          repository: league-infrastructure/partner-scrape
+          path: .partner-scrape
+
+      - name: Fetch published data
+        run: scripts/fetch-data.sh "$GITHUB_WORKSPACE/.partner-scrape"
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
