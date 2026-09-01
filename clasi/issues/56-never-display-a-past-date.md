@@ -24,7 +24,17 @@ clamps to today when a last date reaches today, so a record with **no
 2024-12-01, no end date. It renders on the live site as a 2024 event.
 
 The upstream question — why an undated-end 2024 record survives the export
-filter — is partner-scrape's, and is filed there. This issue is the site's
+filter — was partner-scrape's, and is now fixed: its sprint 020 ticket 001
+bounds `DEADLINE_FIRST_TYPES` records to a 365-day stale-posting window
+(`export/writer.py`, `_DEADLINE_FIRST_STALE_POSTING_DAYS`). That specific
+record should drop out on the next pipeline run, taking the live count to
+zero.
+
+This issue stands anyway, and the reason is the point of it. This is the
+second upstream edge case in a row to reach visitors as a visibly wrong
+date, and each was fixed only after someone noticed it on the live site. The
+site should hold the guarantee itself rather than depending on the data
+being right every time. This issue is the site's
 own guarantee: the original report's closing line was "nothing on the site
 should display a date earlier than today," and that should hold regardless
 of what the data does. A display that faithfully renders whatever it is
@@ -54,9 +64,10 @@ visitor it is one.
 
 ## References
 
-Original report: `docs/issues/005-no-past-dates-shown.md` (this issue
-supersedes its website half). Upstream fix:
-`partner_scrape/normalize/collapse.py` `_span()`, sprint-era next-occurrence
-logic. The undated-end export gap is filed on partner-scrape as issue 61.
+Original report: `clasi/issues/done/005-no-past-dates-shown.md` (this issue
+supersedes its website half). Upstream fixes, both shipped:
+`partner_scrape/normalize/collapse.py` `_span()` for the next-occurrence
+logic, and partner-scrape issue 61 / sprint 020 ticket 001 for the
+undated-end stale-posting bound.
 Site files: `src/lib/helpers.ts`, `src/components/OpportunityCard.astro`,
 `src/pages/opportunities/[slug].astro`, `src/components/CalendarView.astro`.
