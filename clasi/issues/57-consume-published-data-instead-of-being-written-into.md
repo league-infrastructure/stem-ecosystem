@@ -27,17 +27,25 @@ component verified that the directory it found was the site repo, or that
 what it read there was current. Replacing a push with a pull is the chance
 to make the data flow explicit and one-directional.
 
-## The images question
+## The images
 
-This repo currently carries `public/images/opportunities/` — 631 files,
-405 MB — as tracked content, and the images churn on every scrape. `.git` is
-already 428 MB. Left as is, that grows every week forever, and it grows in
-the repo that has to be cloned to work on the *website*.
+Settled: the images move to partner-scrape's `data/images/opportunities/`
+alongside everything else, so the fetch this issue builds has to cover them,
+not just the JSON.
 
-Fetching at build time instead would take the working tree and all future
-growth off this repo. It would not shrink history, which keeps the 405 MB
-already committed unless the history is rewritten — a separate decision, and
-not one to make casually on a repo with a live deploy.
+Two corrections to what this issue originally assumed, both established by
+measurement (see issue 58). The images do **not** churn every scrape — the
+filenames are content-addressed, so git stores each one exactly once and
+history shows 631 additions with zero modifications or deletions. Growth is
+additive only. And the 405 MB is mostly oversized originals rather than an
+irreducible quantity; partner-scrape is adding resize-on-fetch, so newly
+downloaded images arrive web-sized and the set stops growing at anything
+like the current rate.
+
+Fetching at build time takes the working tree and all future growth off this
+repo. It does not shrink history, so the 405 MB already committed stays
+unless the history is rewritten — a separate decision, and not one to make
+casually on a repo with a live deploy.
 
 ## Proposed approach
 

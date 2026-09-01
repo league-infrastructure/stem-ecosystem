@@ -47,12 +47,25 @@ after.
 
 ## Proposed fix
 
-Resize at download, in partner-scrape's `EventImageDownloader`. That is the
-better half of the fix — it shrinks the stored artifact for everyone, means
-less to transfer whatever the hosting decision turns out to be, and avoids
-this repo carrying originals it never serves. A long edge cap around
-1200-1600px at quality ~80 would cover every use on the site. Not this
-repo's code, so it needs to be raised there rather than done here.
+**Resize on fetch — accepted upstream and in progress.** partner-scrape is
+adding resizing to `EventImageDownloader`, applying to newly downloaded
+images only. That is the better half of the fix: it shrinks the stored
+artifact for everyone and means less to transfer however the data ends up
+being published.
+
+**The existing 631 stay oversized, and that remains this issue's problem.**
+Re-encoding them is explicitly out of the upstream sprint's scope. Until
+someone migrates them, production keeps serving the 5.2 MB original and the
+other 146 files over 1 MB. So the visitor-facing defect is not fixed by the
+upstream change — only prevented from growing.
+
+The migration is not a local edit. The filenames are content-addressed
+(16 hex chars), so re-encoding changes every filename, which changes every
+`image_src` in `opportunities.json`. Doing it safely means re-encoding and
+rewriting the references in one coordinated publish, which is a pipeline
+operation rather than something to do by hand in this repo. Worth weighing
+against simply letting the oversized set age out as events expire and get
+replaced by resized ones — slower, but free and zero-risk.
 
 On the site side, once images arrive at a sane size, consider Astro's
 `astro:assets` for responsive `srcset` on the card grid. Lower priority —
