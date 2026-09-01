@@ -44,15 +44,42 @@ the absence of the block.
 - Add the blurb block to the detail page: the paragraph, an attribution
   line, and the fetch date. Render nothing when the field is absent.
 
-## Open questions
+**Converge the three surfaces on one signal.** Once partner-scrape's
+extraction pass lands, `teams.json` carries provenance and a fetch date —
+evidence the pipeline actually reached the team's site. That is a better
+basis for all three surfaces than each deriving its own answer, and adopting
+it is the actual fix for the inconsistency rather than patching three
+conditions to agree.
 
-- Should the blurb's fetch date be shown to visitors, or only carried in the
-  data? A visible "as of" date is honest about staleness on a dataset that
-  refreshes roughly yearly, but it adds clutter to a short page.
+One caveat before treating it as sufficient on its own: "we fetched this
+site" and "this link is worth showing a visitor" are not the same claim. A
+parked or expired domain can return 200 and yield no usable text, which is
+the case sprint 013's dead-link guard was added for. So the guard likely
+still earns its place as a second condition — what should go is the *third*
+independent derivation, not the guard itself.
+
+**Show the fetch date, quietly.** Resolved rather than left open: render it
+alongside the attribution, in the register of the existing staleness cues
+("from the team's website, as of Aug 2026"). Teams data refreshes roughly
+yearly, so a visitor has no other way to judge whether a blurb still
+describes the team. This is transparency about provenance, which is the same
+reason the extraction pass refuses to generate a blurb it cannot source —
+displaying a summary with silent authority would undercut that. A stale
+blurb is also lower-stakes than a wrong date, so surfacing the date is
+enough here; it does not need issue 56's don't-trust-the-data-layer
+treatment.
 
 ## References
 
-partner-scrape issue 44 (the data half: website import, extraction pass,
-`teams/model.py`'s no-email-ever invariant); sprint 013 (website surfacing +
-sponsor extraction); `src/pages/teams/[slug].astro`,
+partner-scrape issue 44, rescoped to its data half (website import,
+extraction pass, `teams/model.py`'s no-email-ever invariant) after sprint
+019 removed the site from that repo; its sprint 021 carries that work.
+Sprint 013 (website surfacing + sponsor extraction, and the dead-link guard
+this issue audits). Site files: `src/pages/teams/[slug].astro`,
 `src/components/TeamCard.astro`, `src/components/TeamFilters.astro`.
+
+Before starting the audit, check partner-scrape's import ticket findings:
+it reports the `website_status` distribution across current teams data, so
+if links are missing because status was never set to `confirmed` rather than
+because the guard is wrong, that is fixed upstream and this issue shrinks to
+the blurb rendering.
