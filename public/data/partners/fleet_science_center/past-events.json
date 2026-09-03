@@ -1,5 +1,5 @@
 {
- "generated_at": "2026-08-31T19:31:52Z",
+ "generated_at": "2026-09-02T22:54:58Z",
  "partner_slug": "fleet_science_center",
  "kind": "past",
  "event_count": 2,
@@ -37,27 +37,23 @@
    "image_src": ""
   },
   {
-   "slug": "https_www_fleetscience_org_events_sky_tonight",
-   "title": "The Sky Tonight",
+   "slug": "https_www_fleetscience_org_events_two_scientists_walk_bar",
+   "title": "Two Scientists Walk Into a Bar®",
    "partner_name": "Fleet Science Center",
    "partner_id": 121,
-   "description": "Connecting our community to the wonders above.",
-   "link": "https://www.fleetscience.org/events/sky-tonight",
+   "description": "Join local scientists for a good conversation at a local bar",
+   "link": "https://www.fleetscience.org/events/two-scientists-walk-bar",
    "availability": "",
-   "date_start": "2026-08-29T00:00:00-07:00",
+   "date_start": "",
    "date_end": "",
    "age_grade_level": [
-    "Family",
     "Adult"
    ],
    "cost_range": "",
-   "time_of_day": [
-    "Evening"
-   ],
+   "time_of_day": [],
    "opportunity_type": "Out-of-school Programs",
    "areas_of_interest": [
-    "Earth Science/Ecology",
-    "Physics"
+    "General Science"
    ],
    "specific_attention": [],
    "financial_support": "No",

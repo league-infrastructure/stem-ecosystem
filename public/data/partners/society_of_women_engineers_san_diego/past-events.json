@@ -1,8 +1,8 @@
 {
- "generated_at": "2026-08-31T19:31:52Z",
+ "generated_at": "2026-09-02T22:54:58Z",
  "partner_slug": "society_of_women_engineers_san_diego",
  "kind": "past",
- "event_count": 98,
+ "event_count": 99,
  "events": [
   {
    "slug": "https_us04web_zoom_us_j_71466020980_pwd_twlv5dhz7xqi4rsu2baba6hd35q_og_1",
@@ -482,6 +482,47 @@
    ],
    "opportunity_type": "Out-of-school Programs",
    "areas_of_interest": [
+    "General Science"
+   ],
+   "specific_attention": [],
+   "financial_support": "No",
+   "ngss_aligned": "No",
+   "location": "Cabrillo National Monument, 1800 Cabrillo Memorial Dr, San Diego, CA 92106, USA",
+   "latitude": "32.7830113",
+   "longitude": "-117.1707951",
+   "contact_name": "",
+   "contact_email": "",
+   "contact_phone": "",
+   "logo_src": "society_of_women_engineers.png",
+   "eligibility": "",
+   "image_src": ""
+  },
+  {
+   "slug": "junior_scientist_day_at_cabrillo_national_monument_20230923",
+   "title": "Junior Scientist Day at Cabrillo National Monument",
+   "partner_name": "Society of Women Engineers - San Diego",
+   "partner_id": 48,
+   "description": "Set-up 10:30am<br>Event 11-3pm<br>Clean-up by 3:30pm<br><br>Stations are scattered throughout the park and participants doing a \"Cabrillo Adventure\" (scavenger hunt) activity that leads them to these stations. The scientist(s) at each station will have a \"I'm a Scientist/Engineer - ask me anything!\" sign next to them and will answer questions as well as do an activity that corresponds to their station's theme. They are:<br><ul><li>Biodiversity of San Diego - biologists, ecologists</li><li>Native Plants of San Diego - ethnobotanists, botanists, biologists</li><li>Juan Rodriguez Cabrillo - archaeologists, anthropologists</li><li>Military History - engineers, mathematicians (gun battery)</li><li>Lighthouse - chemistry, physics (fog, lighthouse lenses, etc.)</li><li>Kelp Forest - marine science</li></ul>",
+   "link": "",
+   "availability": "Repeats 2 times through 2024-09-28",
+   "date_start": "2023-09-23T11:00:00-07:00",
+   "date_end": "2024-09-28T23:00:00-07:00",
+   "age_grade_level": [
+    "Family",
+    "Grades 6-8",
+    "Grades 9-12"
+   ],
+   "cost_range": "Free",
+   "time_of_day": [
+    "Late Morning",
+    "Afternoon"
+   ],
+   "opportunity_type": "Out-of-school Programs",
+   "areas_of_interest": [
+    "Biology / LifeSciences",
+    "Earth Science/Ecology",
+    "Chemistry",
+    "Physics",
     "General Science"
    ],
    "specific_attention": [],
@@ -1457,16 +1498,19 @@
    "time_of_day": [
     "Evening"
    ],
-   "opportunity_type": "Out-of-school Programs",
+   "opportunity_type": "Online",
    "areas_of_interest": [
     "Biology / LifeSciences",
+    "Earth Science/Ecology",
     "Engineering",
+    "Chemistry",
+    "Physics",
     "General Science"
    ],
    "specific_attention": [],
    "financial_support": "No",
    "ngss_aligned": "No",
-   "location": "Virtual (Google Meet)",
+   "location": "Online",
    "latitude": "32.7830113",
    "longitude": "-117.1707951",
    "contact_name": "",

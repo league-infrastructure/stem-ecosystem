@@ -75,6 +75,34 @@ successfully — the exact path CI takes.
 **Precondition for re-landing:** `data/opportunities.json` resolves on
 partner-scrape's `origin/master`.
 
+### 2026-09-02: run manually, precondition still unmet
+
+partner-scrape published a fresh `data/` (its `e1ce5c7`, scrape-meta
+`2026-09-02T22:54:58Z`) and it was pulled in by hand rather than by CI.
+`scripts/fetch-data.sh` is restored and tracked again — only the script, not
+the workflow wiring from `8b7ad08`, because the precondition above still
+fails: partner-scrape is **195 commits ahead of its `origin/master`** (still
+at `703babd`) and `data/opportunities.json` still does not resolve there. CI
+would fetch nothing, exactly as before.
+
+So the script is now a local tool: `scripts/fetch-data.sh ../partner-scrape`
+against a sibling checkout, output committed here. The generated files stay
+tracked in the meantime. Re-landing the workflow half remains a revert of
+`4c758b0` once the upstream push happens.
+
+Verified on this run: 360 opportunities, 562 images, 485 referenced, zero
+missing; the curated `src/data/partners.json` byte-identical before and
+after; 936 pages built and every one 200 in preview.
+
+The mirror retired two slug directories under `public/data/partners/` —
+`living_coast_discovery_center` and `the_salk_institute_education_outreach`
+— which are renames, not drops (`the_living_coast_discovery_center` and
+`salk_institute_education_outreach` arrived in the same run, ids 46 and 23,
+matching the curated roster). Site pages are id-keyed so no route changed,
+but the two old slugs are gone from the published per-partner JSON contract.
+That is the intended mirror semantics; it is worth knowing it is visible to
+any consumer that hardcoded a slug.
+
 ## Open: what triggers a data refresh
 
 Worth settling before or with the re-land. Under the old arrangement the
