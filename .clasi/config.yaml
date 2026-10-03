@@ -1,0 +1,12 @@
+design_docs: enabled
+paths:
+  architecture: scraper/docs/architecture
+  db: .clasi/.clasi.db
+  design: scraper/docs/design
+  issues: clasi/issues
+  logs: .clasi/log
+  reflections: clasi/reflections
+  sprints: clasi/sprints
+process: se
+sources:
+- scraper/partner_scrape

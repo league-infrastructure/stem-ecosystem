@@ -1,0 +1,1 @@
+/Users/eric/proj/league/infrastructure/stem-ecosystem/.agents/skills/architecture-review/SKILL.md

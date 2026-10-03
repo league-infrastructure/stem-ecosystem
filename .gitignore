@@ -28,3 +28,9 @@ npm-debug.log*
 *.pid
 *.seed
 *.pid.lock
+
+# CLASI local state
+.clasi/.clasi.db
+.clasi/.clasi.db-wal
+.clasi/.clasi.db-shm
+.clasi/log/

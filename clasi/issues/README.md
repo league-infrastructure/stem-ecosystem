@@ -1,7 +1,9 @@
 # Issues
 
-Website issues for the SD STEM Ecosystem site. Open issues sit in this
-directory; resolved ones move to `done/`.
+Issues for the SD STEM Ecosystem project: both the website (repo root) and
+the scraper (`scraper/`). Open issues sit in this directory; resolved ones
+move to `done/`. Issues claimed by a sprint live in that sprint's
+`issues/` directory under `clasi/sprints/`.
 
 Each file is `NN-kebab-slug.md` with YAML frontmatter carrying `status:`
 (`pending` or `done`), an H1 title, and `##` sections — typically
@@ -10,27 +12,41 @@ Each file is `NN-kebab-slug.md` with YAML frontmatter carrying `status:`
 
 ## Scope
 
-This repo owns the website and the data it publishes. The scraping pipeline
-lives in [partner-scrape](https://github.com/league-infrastructure/partner-scrape)
-and has its own issue set. The dividing line:
+One repo, two halves. Issues can touch either or both:
 
-- **Here**: pages, components, filters, rendering, site UX, the published
-  data contract's presentation (`/data-access`, `/for-agents`, `llms.txt`),
-  and the hand-curated roster `src/data/partners.json`.
-- **There**: scraping, adapters, extraction, enrichment, source registries,
-  taxonomy, and everything that generates the other data files.
+- **Site** (repo root): pages, components, filters, rendering, site UX, the
+  published data contract's presentation (`/data-access`, `/for-agents`,
+  `llms.txt`), and the hand-curated roster `src/data/partners.json`.
+- **Scraper** (`scraper/`): scraping, adapters, extraction, enrichment,
+  source registries, taxonomy, and everything that generates the published
+  data in the `jtl-stem-ecosystem-scrape` bucket.
 
-Several issues here were split out of partner-scrape issues when the site
-moved into this repo; those carry a `split_from:` field naming the original.
-An issue whose data half is still upstream says so, and names what it is
-waiting on.
+The scraper lived in the separate
+[partner-scrape](https://github.com/league-infrastructure/partner-scrape)
+repo until 2026-10-02, when it moved into `scraper/` here. That repo is now
+archived. Its issues and sprint history (sprints 001-038) came with it.
+Some site issues carry a `split_from:` field naming a partner-scrape issue
+they were split out of; those numbers refer to the same issue here.
 
 ## Numbering
 
-Issues 49 and up share a single sequence with partner-scrape, so a number
-means the same issue in both repos and cross-references are unambiguous.
-This repo mints from 49; partner-scrape mints from 60.
+There is one issue sequence. **The next new issue is 67.**
 
-Issues 001-006 in `done/` predate that arrangement — they are this site's own
-original sequence from `docs/issues/`, and their numbers do **not**
-correspond to partner-scrape issues 1-6.
+- **001-006** (in `done/`): the site's original sequence from
+  `docs/issues/`, older than the shared numbering. Not the same issues as the
+  scraper's early 01-06.
+- **01-48**: scraper issues from partner-scrape.
+- **49-58**: site issues, numbered when the two repos shared one sequence.
+- **60-62**: scraper issues (sprint-scoped, under `clasi/sprints/`).
+- **63-65**: scraper issues from sprint 038. They were created in
+  partner-scrape as 49, 50 and 51, colliding with site issues 49-51, and
+  were renumbered when the repos merged:
+
+  | Old (partner-scrape) | New |
+  |---|---|
+  | 49 move scrape cache to DigitalOcean Spaces | 63 |
+  | 50 move cache and data to DigitalOcean Spaces | 64 |
+  | 51 make partner-scrape a pip-installable package | 65 |
+
+  partner-scrape commit messages still use the old numbers.
+- **66**: the repo consolidation itself.
