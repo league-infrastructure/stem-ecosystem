@@ -3,8 +3,10 @@ name: Build
 on:
   push:
     branches: ['**']
+    paths-ignore: ['scraper/**']
   pull_request:
     branches: ['master']
+    paths-ignore: ['scraper/**']
 
 permissions:
   contents: read
