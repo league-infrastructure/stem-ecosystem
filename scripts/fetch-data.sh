@@ -5,21 +5,53 @@
 # `data/` directory and this repo pulls. See clasi/issues/57.
 #
 # Usage:
-#   scripts/fetch-data.sh <path-to-partner-scrape-checkout>
-#   scripts/fetch-data.sh              # defaults to ../partner-scrape
+#   scripts/fetch-data.sh <path-to-partner-scrape-checkout>   # local checkout
+#   scripts/fetch-data.sh                                     # defaults to ../partner-scrape
+#   scripts/fetch-data.sh --bucket                            # pull from the Spaces bucket
 #
-# CI checks partner-scrape out to a temp path and passes it explicitly.
+# Bucket mode syncs s3://jtl-stem-ecosystem-scrape/data/ (DigitalOcean Spaces,
+# sfo3) into a temp directory with the aws CLI, then runs the same explicit
+# copy list and image check as local mode. Credentials come from the
+# environment: DO_SPACES_ACCESS_KEY / DO_SPACES_SECRET_KEY (mapped to the
+# AWS_* variables the CLI reads), or pre-set AWS_ACCESS_KEY_ID /
+# AWS_SECRET_ACCESS_KEY. Bucket data/ also holds SCHEMA.md; it is never copied.
+#
+# CI may check partner-scrape out to a temp path and pass it explicitly.
 
 set -euo pipefail
 
-SRC_REPO="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/../partner-scrape}"
-DATA="$SRC_REPO/data"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+BUCKET_URL="s3://jtl-stem-ecosystem-scrape/data/"
+SPACES_ENDPOINT="https://sfo3.digitaloceanspaces.com"
 
-if [ ! -d "$DATA" ]; then
-  echo "error: no data/ directory at $DATA" >&2
-  echo "       pass the partner-scrape checkout as the first argument." >&2
-  exit 1
+if [ "${1:-}" = "--bucket" ]; then
+  if [ -n "${DO_SPACES_ACCESS_KEY:-}" ] && [ -n "${DO_SPACES_SECRET_KEY:-}" ]; then
+    export AWS_ACCESS_KEY_ID="$DO_SPACES_ACCESS_KEY"
+    export AWS_SECRET_ACCESS_KEY="$DO_SPACES_SECRET_KEY"
+  fi
+  if [ -z "${AWS_ACCESS_KEY_ID:-}" ] || [ -z "${AWS_SECRET_ACCESS_KEY:-}" ]; then
+    echo "error: bucket mode needs credentials in the environment:" >&2
+    echo "       DO_SPACES_ACCESS_KEY and DO_SPACES_SECRET_KEY, or" >&2
+    echo "       AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY." >&2
+    exit 1
+  fi
+  if ! command -v aws >/dev/null 2>&1; then
+    echo "error: the aws CLI is required for bucket mode." >&2
+    exit 1
+  fi
+  DATA="$(mktemp -d)"
+  trap 'rm -rf "$DATA"' EXIT
+  export AWS_DEFAULT_REGION="${AWS_DEFAULT_REGION:-us-east-1}"
+  echo "syncing $BUCKET_URL -> temp dir"
+  aws s3 sync "$BUCKET_URL" "$DATA/" --endpoint-url "$SPACES_ENDPOINT" --only-show-errors
+else
+  SRC_REPO="${1:-$ROOT/../partner-scrape}"
+  DATA="$SRC_REPO/data"
+  if [ ! -d "$DATA" ]; then
+    echo "error: no data/ directory at $DATA" >&2
+    echo "       pass the partner-scrape checkout as the first argument, or use --bucket." >&2
+    exit 1
+  fi
 fi
 
 # Copy an explicit list, never a glob. `data/partners.json` is the GENERATED

@@ -21,7 +21,19 @@ npm run preview    # serve the built output
 
 Site content is **not** edited here. A separate repo,
 [partner-scrape](https://github.com/league-infrastructure/partner-scrape), runs the scraping
-pipeline weekly and pushes a data commit to this repo's `master`, which triggers a deploy.
+pipeline and publishes its output to a DigitalOcean Spaces bucket
+(`s3://jtl-stem-ecosystem-scrape/data/`). It no longer pushes commits to this repo.
+
+For now, pulling that data is a manual step:
+
+```bash
+set -a; source /path/to/.env; set +a   # DO_SPACES_ACCESS_KEY / DO_SPACES_SECRET_KEY
+scripts/fetch-data.sh --bucket         # sync from the bucket (needs the aws CLI)
+scripts/fetch-data.sh ../partner-scrape  # or copy from a local partner-scrape checkout
+```
+
+Review and commit the result. The GitHub workflows do not fetch yet (build-time fetch is a
+later phase). The script never overwrites the hand-curated `src/data/partners.json`.
 
 | Path | Owner | Notes |
 |---|---|---|
