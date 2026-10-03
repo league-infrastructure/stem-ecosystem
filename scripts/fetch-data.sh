@@ -1,13 +1,15 @@
 #!/usr/bin/env bash
-# Populate this repo's data files from partner-scrape's published `data/`.
+# Populate the site's data files from the scraper's published data.
 #
-# The scraper no longer writes into this checkout; it publishes to its own
-# `data/` directory and this repo pulls. See clasi/issues/57.
+# The scraper (scraper/) publishes to the DigitalOcean Spaces bucket; this
+# script pulls that output into src/data and public/data.
 #
 # Usage:
-#   scripts/fetch-data.sh <path-to-partner-scrape-checkout>   # local checkout
-#   scripts/fetch-data.sh                                     # defaults to ../partner-scrape
-#   scripts/fetch-data.sh --bucket                            # pull from the Spaces bucket
+#   scripts/fetch-data.sh                     # pull from the Spaces bucket (default)
+#   scripts/fetch-data.sh --bucket            # same, explicitly
+#   scripts/fetch-data.sh --local <data-dir>  # copy from a local data directory,
+#                                             # e.g. scraper/data when the scraper ran
+#                                             # with PARTNER_SCRAPE_DATA_DIR=./data
 #
 # Bucket mode syncs s3://jtl-stem-ecosystem-scrape/data/ (DigitalOcean Spaces,
 # sfo3) into a temp directory with the aws CLI, then runs the same explicit
@@ -15,8 +17,6 @@
 # environment: DO_SPACES_ACCESS_KEY / DO_SPACES_SECRET_KEY (mapped to the
 # AWS_* variables the CLI reads), or pre-set AWS_ACCESS_KEY_ID /
 # AWS_SECRET_ACCESS_KEY. Bucket data/ also holds SCHEMA.md; it is never copied.
-#
-# CI may check partner-scrape out to a temp path and pass it explicitly.
 
 set -euo pipefail
 
@@ -24,7 +24,13 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BUCKET_URL="s3://jtl-stem-ecosystem-scrape/data/"
 SPACES_ENDPOINT="https://sfo3.digitaloceanspaces.com"
 
-if [ "${1:-}" = "--bucket" ]; then
+if [ "${1:-}" = "--local" ]; then
+  DATA="${2:-}"
+  if [ -z "$DATA" ] || [ ! -d "$DATA" ]; then
+    echo "error: --local needs an existing data directory (got: ${DATA:-nothing})." >&2
+    exit 1
+  fi
+elif [ -z "${1:-}" ] || [ "${1:-}" = "--bucket" ]; then
   if [ -n "${DO_SPACES_ACCESS_KEY:-}" ] && [ -n "${DO_SPACES_SECRET_KEY:-}" ]; then
     export AWS_ACCESS_KEY_ID="$DO_SPACES_ACCESS_KEY"
     export AWS_SECRET_ACCESS_KEY="$DO_SPACES_SECRET_KEY"
@@ -45,13 +51,8 @@ if [ "${1:-}" = "--bucket" ]; then
   echo "syncing $BUCKET_URL -> temp dir"
   aws s3 sync "$BUCKET_URL" "$DATA/" --endpoint-url "$SPACES_ENDPOINT" --only-show-errors
 else
-  SRC_REPO="${1:-$ROOT/../partner-scrape}"
-  DATA="$SRC_REPO/data"
-  if [ ! -d "$DATA" ]; then
-    echo "error: no data/ directory at $DATA" >&2
-    echo "       pass the partner-scrape checkout as the first argument, or use --bucket." >&2
-    exit 1
-  fi
+  echo "error: unknown argument: $1 (use --bucket or --local <data-dir>)" >&2
+  exit 1
 fi
 
 # Copy an explicit list, never a glob. `data/partners.json` is the GENERATED

@@ -20,16 +20,19 @@ Ecosystem's directory of STEM learning opportunities for **learners of all ages*
 stated audience and its `Adult` age facet — see §3's sprint 014 note and
 `partner_scrape/enrich/DESIGN.md`).
 
-It is one half of a two-repository architecture:
+It is one half of a two-part project that lives in one repository (since 2026-10-02):
 
-- **`partner-scrape`** (this repo) — a Python aggregator that visits ~100 partner
-  organizations' websites and APIs, extracts events, programs, and internships,
-  deduplicates and classifies them, and writes a JSON data contract.
-- **`stem-ecosystem`** — an Astro static site that consumes that contract and renders the
-  public directory.
+- **The scraper** (`scraper/`, formerly the separate `partner-scrape` repo, now archived) —
+  a Python aggregator that visits ~100 partner organizations' websites and APIs, extracts
+  events, programs, and internships, deduplicates and classifies them, and writes a JSON data
+  contract.
+- **The site** (repo root of this, the `stem-ecosystem`, repository) — an Astro
+  static site that consumes that contract and renders the public directory.
 
-The boundary between them is a small set of files written into the site checkout's
-`src/data/` and `public/images/` directories. Nothing else crosses.
+The boundary between them is the published data contract in the DigitalOcean Spaces bucket
+`jtl-stem-ecosystem-scrape` (`data/` prefix, since sprint 038), which the site pulls with
+`scripts/fetch-data.sh`, plus the curated roster `src/data/partners.json` that the scraper
+reads from the site. Nothing else crosses.
 
 A run is scheduled, unattended, and expected to partially fail: with ~100 independent
 third-party sources, some fraction is always broken, redesigned, or unreachable. The
