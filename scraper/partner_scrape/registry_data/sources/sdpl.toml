@@ -1,0 +1,44 @@
+# San Diego Public Library -- DISABLED 2026-08-30 (sprint 014 ticket
+# 003 / issue 24 triage). Previously registered against BiblioCommons
+# with subdomain "sandiego" on the documented, deliberate basis that
+# SDPL's Events feature returned a confirmed HTTP 403 "not available"
+# response (see git history for the prior comment) -- a state this
+# adapter's non-200 handling already coped with gracefully.
+#
+# Live re-probe 2026-08-30 found that state has changed and gotten
+# worse, not better:
+#
+#   GET https://gateway.bibliocommons.com/v2/libraries/sandiego/events
+#
+# now returns HTTP 410 Gone, {"error": {"message": "Site disabled",
+# "classification": "SiteDisabledError", "meta": {"homeLink":
+# "https://sdpl.na5.iiivega.com/", ...}}} -- and SDPL no longer appears
+# at all when searching "san diego" in the BiblioCommons
+# select_library picker (https://sdpl.bibliocommons.com/info/
+# select_library), which today lists only "sdcl" (San Diego County
+# Library, still live and unaffected -- see sdcl.toml). The homeLink in
+# the 410 response points at sdpl.na5.iiivega.com -- Innovative
+# Interfaces' Vega platform, a different ILS/discovery product
+# entirely. San Diego Public Library has evidently migrated off
+# BiblioCommons since this source was first registered.
+#
+# adapter_type = "bibliocommons" can never work again for this
+# organization: it is not a bug in this adapter, a config error, or a
+# transient outage, it is the wrong platform. Reaching SDPL's real
+# events calendar would need a new registration against Vega (out of
+# this ticket's scope -- no new adapter engineering, no new sources).
+# enabled = false rather than deleted, per registry/DESIGN.md's
+# disabled-with-reason convention, so this history round-trips through
+# load_sources().
+
+org_name = "San Diego Public Library"
+adapter_type = "bibliocommons"
+enabled = false  # disabled: migrated off BiblioCommons to Vega (sdpl.na5.iiivega.com); gateway now returns 410 "Site disabled" -- confirmed live 2026-08-30
+
+[config]
+subdomain = "sandiego"
+
+[acquisition_policy]
+rate_limit_seconds = 1.0
+respect_robots = true
+discovered_via = "live BiblioCommons gateway API investigation (2026-07-19); disabled sprint 014 ticket 003 (2026-08-30)"

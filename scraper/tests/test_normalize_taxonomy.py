@@ -1,0 +1,328 @@
+"""Tests for partner_scrape.normalize.taxonomy: keyword-rule derivation.
+
+Every case is spot-checked against dev/export_site.py's rule set
+(ticket 006's acceptance criteria: "behavior matches dev/export_site.py's
+rules on the same inputs, spot-checked, not required to be
+byte-identical") -- no network, no adapter/Event fixtures needed, since
+these are pure text/value -> tags functions.
+"""
+
+from __future__ import annotations
+
+from datetime import datetime
+
+from partner_scrape.normalize.taxonomy import (
+    classify_opportunity_type,
+    AGE_KEYWORDS,
+    AREA_KEYWORDS,
+    build_taxonomy_text,
+    derive_age_grade_level,
+    derive_areas_of_interest,
+    derive_region,
+    derive_specific_attention,
+    derive_time_of_day,
+    map_cost,
+    tag_by_keywords,
+)
+
+
+class TestTagByKeywords:
+    def test_matches_are_returned_in_rule_order(self):
+        text = "Learn chemistry and then some physics"
+        assert tag_by_keywords(text, AREA_KEYWORDS) == ["Chemistry", "Physics"]
+
+    def test_case_insensitive(self):
+        assert tag_by_keywords("ROBOT CLUB", AREA_KEYWORDS) == [
+            "Coding/Computer Science/Cyber Security"
+        ]
+
+    def test_no_match_returns_empty_list(self):
+        assert tag_by_keywords("A picnic in the park", AREA_KEYWORDS) == []
+
+    def test_a_label_is_never_repeated(self):
+        text = "code code coding programming"
+        assert tag_by_keywords(text, AREA_KEYWORDS) == ["Coding/Computer Science/Cyber Security"]
+
+
+class TestDeriveAreasOfInterest:
+    def test_matching_text_returns_matched_labels(self):
+        assert derive_areas_of_interest("Tide pool exploration at the aquarium") == [
+            "Biology / LifeSciences"
+        ]
+
+    def test_multiple_matching_areas_all_returned(self):
+        result = derive_areas_of_interest("Robot building and marine biology camp")
+        assert result == ["Biology / LifeSciences", "Coding/Computer Science/Cyber Security"]
+
+    def test_unmatched_text_defaults_to_general_science(self):
+        assert derive_areas_of_interest("A picnic in the park") == ["General Science"]
+
+
+class TestDeriveAgeGradeLevel:
+    def test_family_keyword_matches(self):
+        assert derive_age_grade_level("A fun event for the whole family") == ["Family"]
+
+    def test_unmatched_text_returns_empty_list_no_default(self):
+        assert derive_age_grade_level("Tide pool exploration") == []
+
+    def test_grades_6_8_keyword_matches(self):
+        assert derive_age_grade_level("For middle school students") == ["Grades 6-8"]
+
+
+class TestDeriveSpecificAttention:
+    """Sprint 033, issue 34: bilingual/Spanish and accessibility signals,
+    populating the site schema's own previously-hardcoded-[] field."""
+
+    def test_bilingual_keyword_matches(self):
+        assert derive_specific_attention("Bilingual Storytime") == ["Programs in Spanish"]
+
+    def test_bilingual_category_tag_matches(self):
+        # CMOD's tec_rest adapter populates Event.categories from the
+        # TEC API's own category list -- matched via build_taxonomy_text,
+        # not title-only.
+        text = build_taxonomy_text("Family Science Day", "", ["Bilingual"], [])
+        assert derive_specific_attention(text) == ["Programs in Spanish"]
+
+    def test_noche_de_ciencias_matches(self):
+        assert derive_specific_attention("Noche de Ciencias") == ["Programs in Spanish"]
+
+    def test_san_ysidro_stem_fair_matches(self):
+        assert derive_specific_attention("San Ysidro STEM Fair") == ["Programs in Spanish"]
+
+    def test_en_espanol_with_accent_matches(self):
+        assert derive_specific_attention("Ciencia en español para niños") == [
+            "Programs in Spanish"
+        ]
+
+    def test_en_espanol_without_accent_matches(self):
+        assert derive_specific_attention("Ciencia en espanol para ninos") == [
+            "Programs in Spanish"
+        ]
+
+    def test_sensory_friendly_matches(self):
+        assert derive_specific_attention("Sensory Friendly Mornings") == [
+            "Programs for students with disabilities"
+        ]
+
+    def test_sensory_friendly_hyphenated_matches(self):
+        assert derive_specific_attention("Sensory-Friendly Morning") == [
+            "Programs for students with disabilities"
+        ]
+
+    def test_accessibility_mornings_matches(self):
+        assert derive_specific_attention("Accessibility Mornings") == [
+            "Programs for students with disabilities"
+        ]
+
+    def test_asd_mornings_matches(self):
+        assert derive_specific_attention("ASD Mornings at the Nat") == [
+            "Programs for students with disabilities"
+        ]
+
+    def test_both_signals_can_match_together(self):
+        text = "Bilingual Sensory Friendly Family Day"
+        assert derive_specific_attention(text) == [
+            "Programs in Spanish",
+            "Programs for students with disabilities",
+        ]
+
+    def test_unmatched_text_returns_empty_list_no_default(self):
+        assert derive_specific_attention("Tide pool exploration") == []
+
+
+class TestDeriveRegion:
+    """Sprint 033, issue 34: internal-only San Diego sub-region classification."""
+
+    def test_south_bay_city_matches(self):
+        assert derive_region("Chula Vista, CA") == "South Bay"
+
+    def test_south_bay_generic_keyword_matches(self):
+        assert derive_region("Somewhere in the South Bay") == "South Bay"
+
+    def test_east_county_city_matches(self):
+        assert derive_region("El Cajon, CA") == "East County"
+
+    def test_north_county_coastal_city_matches(self):
+        assert derive_region("Oceanside, CA") == "North County Coastal"
+
+    def test_north_county_inland_city_matches(self):
+        assert derive_region("Escondido, CA") == "North County Inland"
+
+    def test_central_san_diego_generic_matches(self):
+        assert derive_region("Balboa Park, San Diego, CA 92101") == "Central San Diego"
+
+    def test_south_bay_address_does_not_fall_through_to_central(self):
+        # A South Bay address's location string routinely also contains
+        # "San Diego" or "CA" -- specific-before-generic ordering must
+        # win, not the generic "San Diego" pattern.
+        assert derive_region("1 Main St, Chula Vista, San Diego County, CA") == "South Bay"
+
+    def test_east_county_address_does_not_fall_through_to_central(self):
+        assert derive_region("100 Fletcher Pkwy, El Cajon, San Diego, CA 92020") == "East County"
+
+    def test_unmatched_location_returns_empty_string_no_default(self):
+        assert derive_region("A generic venue with no recognizable city") == ""
+
+    def test_empty_location_returns_empty_string(self):
+        assert derive_region("") == ""
+
+    def test_first_match_wins_south_bay_before_east_county(self):
+        # If a location string somehow carried both a South Bay and an
+        # East County keyword, South Bay's rule is checked first
+        # (REGION_KEYWORDS order).
+        assert derive_region("Chula Vista and El Cajon") == "South Bay"
+
+
+class TestMapCost:
+    def test_empty_string_is_unknown(self):
+        assert map_cost("") == ""
+
+    def test_free_keyword(self):
+        assert map_cost("Free admission") == "Free"
+
+    def test_zero_dollar_variants_are_free(self):
+        assert map_cost("$0") == "Free"
+        assert map_cost("$0.00") == "Free"
+
+    def test_dollar_amount_under_25(self):
+        assert map_cost("$5") == "Less than $25"
+
+    def test_dollar_amount_between_25_and_50(self):
+        assert map_cost("$30") == "Less than $50"
+
+    def test_dollar_amount_between_100_and_200(self):
+        assert map_cost("$150") == "Less than $200"
+
+    def test_dollar_amount_200_or_over(self):
+        assert map_cost("$250") == "Greater than $200"
+
+    def test_multiple_amounts_uses_the_lowest(self):
+        assert map_cost("$10-$60") == "Less than $25"
+
+    def test_unparseable_short_text_is_passed_through(self):
+        assert map_cost("Included with admission") == "Included with admission"
+
+    def test_unparseable_long_text_becomes_empty(self):
+        long_text = "x" * 41
+        assert map_cost(long_text) == ""
+
+
+class TestDeriveTimeOfDay:
+    def test_all_day_overrides_start_time(self):
+        assert derive_time_of_day(datetime(2026, 8, 1, 9, 0), all_day=True) == ["All Day"]
+
+    def test_none_start_and_not_all_day_is_unknown(self):
+        assert derive_time_of_day(None, all_day=False) == []
+
+    def test_morning_before_noon(self):
+        assert derive_time_of_day(datetime(2026, 8, 1, 9, 0), all_day=False) == ["Morning"]
+
+    def test_afternoon_between_noon_and_five(self):
+        assert derive_time_of_day(datetime(2026, 8, 1, 14, 30), all_day=False) == ["Afternoon"]
+
+    def test_evening_at_or_after_five(self):
+        assert derive_time_of_day(datetime(2026, 8, 1, 18, 0), all_day=False) == ["Evening"]
+
+    def test_boundary_noon_is_afternoon(self):
+        assert derive_time_of_day(datetime(2026, 8, 1, 12, 0), all_day=False) == ["Afternoon"]
+
+    def test_boundary_five_pm_is_evening(self):
+        assert derive_time_of_day(datetime(2026, 8, 1, 17, 0), all_day=False) == ["Evening"]
+
+
+class TestBuildTaxonomyText:
+    def test_joins_title_description_categories_and_tags(self):
+        text = build_taxonomy_text(
+            "Tide Pool Walk", "Explore the shore", ["Marine Science"], ["tide pools", "outdoor"]
+        )
+        assert text == "Tide Pool Walk Explore the shore Marine Science tide pools outdoor"
+
+    def test_empty_categories_and_tags_still_joins_cleanly(self):
+        text = build_taxonomy_text("Title", "Description", [], [])
+        assert text == "Title Description  "
+
+
+class TestClassifyOpportunityType:
+    """opportunity_type must be classified from text, not blindly defaulted."""
+
+    def test_volunteering_signals(self):
+        for text in ["Beach Cleanup at Mission Bay", "Habitat Restoration volunteer day",
+                     "Creek to Bay Clean-up", "Trail work and stewardship"]:
+            assert classify_opportunity_type(text) == "Volunteering", text
+
+    def test_online_signals(self):
+        assert classify_opportunity_type("Virtual webinar on native bees") == "Online"
+
+    def test_school_program_signals(self):
+        assert classify_opportunity_type("Field trip for schools") == "School Programs"
+        assert classify_opportunity_type("School Program: Junior Rangers") == "School Programs"
+
+    def test_bare_school_words_do_not_false_positive(self):
+        # "preschool"/"school-age" are AUDIENCE terms, not School Programs
+        assert classify_opportunity_type("Preschool story time") == "Out-of-school Programs"
+        assert classify_opportunity_type("School-age science club") == "Out-of-school Programs"
+
+    def test_unmatched_text_falls_back_to_default(self):
+        assert classify_opportunity_type("Tide Pool Exploration") == "Out-of-school Programs"
+
+    def test_no_funding_opportunities_false_positive_on_the_word_grant(self):
+        """Regression (issue 13): matching "grant" as a keyword signal for
+        "Funding Opportunities" false-positived on ordinary nature-walk
+        titles. There is deliberately no such keyword rule -- only the
+        LLM classification path (enrich/llm_client.py) can ever produce
+        "Funding Opportunities"."""
+        for title in ["Bird Walk at Grant Park", "Anza-Borrego Grant Ranch Hike"]:
+            assert classify_opportunity_type(title) != "Funding Opportunities", title
+            assert classify_opportunity_type(title) == "Out-of-school Programs", title
+
+    def test_camps_signals(self):
+        """Sprint 015 (ticket 006, issue 27): representative real camp
+        titles from this project's own fixtures (test_adapters_wordpress,
+        test_adapters_localist, test_model, test_normalize_run) all
+        classify as "Camps"."""
+        for title in [
+            "Summer Camp Registration Is Open!",
+            "Ocean Explorers Camp",
+            "Farm Camp",
+            "Camp-o-Saurus",
+            "Day Camp for Explorers",
+            "Summer Camps@SFA",
+        ]:
+            assert classify_opportunity_type(title) == "Camps", title
+
+    def test_camps_keyword_is_word_bounded_and_does_not_false_positive(self):
+        """"camp" is word-bounded so it never fires inside "campus",
+        "campaign", "campfire", "campground", or "encampment" -- none of
+        those has a word boundary immediately before/after the substring
+        "camp"."""
+        for title in [
+            "New Campus Tour",
+            "Membership Campaign Kickoff",
+            "Campfire Stories Under the Stars",
+            "Campground Reservations Now Open",
+            "Winter Encampment History Talk",
+        ]:
+            assert classify_opportunity_type(title) != "Camps", title
+
+    def test_camps_does_not_false_positive_against_non_camp_fixture_titles(self):
+        """Spot-check against a representative sample of non-camp titles
+        already exercised elsewhere in this module's fixtures."""
+        for text in ["Beach Cleanup at Mission Bay", "Habitat Restoration volunteer day",
+                     "Creek to Bay Clean-up", "Trail work and stewardship"]:
+            assert classify_opportunity_type(text) != "Camps", text
+        assert classify_opportunity_type("Virtual webinar on native bees") != "Camps"
+        assert classify_opportunity_type("Field trip for schools") != "Camps"
+        assert classify_opportunity_type("Preschool story time") != "Camps"
+        assert classify_opportunity_type("Tide Pool Exploration") != "Camps"
+
+    def test_no_competitions_keyword_rule_declined_per_funding_opportunities_precedent(self):
+        """Sprint 015 (ticket 006, issue 27) decision, recorded here and
+        in OPPORTUNITY_TYPE_KEYWORDS's own comment: no "Competitions"
+        keyword rule is added. The obvious candidate, `competit*`, would
+        false-positive on a real, already-fixtured title --
+        "Competitive Robotics Summer Warm Up" (test_adapters_leaguesync.py)
+        is a League *class*, not a competition. Only the LLM
+        classification path (enrich/llm_client.py) can ever produce
+        "Competitions"."""
+        for title in ["Competitive Robotics Summer Warm Up", "STEM Fair: Grades 6-8 (Free!)"]:
+            assert classify_opportunity_type(title) != "Competitions", title

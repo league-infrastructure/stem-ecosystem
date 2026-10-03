@@ -1,0 +1,94 @@
+"""Adapter Framework: converts a registered source into canonical Events.
+
+See ``sprint.md``'s Architecture > Adapter Framework for the design: the
+``Adapter`` contract (``discover -> fetch -> extract``, chained by
+:func:`run`), dispatched by ``SourceConfig.adapter_type`` via
+:data:`ADAPTERS`. Adding a new adapter type is a one-line addition
+below -- never a change to ``base.py``'s dispatch mechanism, as ticket
+005's ``wp_rest``/``ical`` registration below demonstrates.
+"""
+
+from __future__ import annotations
+
+from partner_scrape.adapters.activenet_camps import ActiveNetCampsAdapter
+from partner_scrape.adapters.base import (
+    ADAPTERS,
+    Adapter,
+    EventRef,
+    RawResponse,
+    UnknownAdapterType,
+    get_adapter,
+    run,
+)
+from partner_scrape.adapters.bibliocommons import BiblioCommonsAdapter
+from partner_scrape.adapters.campbrain import CampBrainAdapter
+from partner_scrape.adapters.generic_html import GenericHtmlAdapter
+from partner_scrape.adapters.greenhouse import GreenhouseAdapter
+from partner_scrape.adapters.ical import ICalAdapter
+from partner_scrape.adapters.leaguesync import LeagueSyncAdapter
+from partner_scrape.adapters.lever import LeverAdapter
+from partner_scrape.adapters.listing_html import ListingHtmlAdapter
+from partner_scrape.adapters.localist import LocalistAdapter
+from partner_scrape.adapters.neogov import NeogovAdapter
+from partner_scrape.adapters.program_page import (
+    ProgramListingAdapter,
+    ProgramPageAdapter,
+    ProgramPageMultiAdapter,
+)
+from partner_scrape.adapters.robotevents import RobotEventsAdapter
+from partner_scrape.adapters.smartrecruiters import SmartRecruitersAdapter
+from partner_scrape.adapters.tec import TecRestAdapter
+from partner_scrape.adapters.wordpress import WordPressRestAdapter
+from partner_scrape.adapters.workable import WorkableAdapter
+from partner_scrape.adapters.workday import WorkdayAdapter
+
+ADAPTERS["tec_rest"] = TecRestAdapter
+ADAPTERS["wp_rest"] = WordPressRestAdapter
+ADAPTERS["ical"] = ICalAdapter
+ADAPTERS["generic_html"] = GenericHtmlAdapter
+ADAPTERS["localist"] = LocalistAdapter
+ADAPTERS["listing_html"] = ListingHtmlAdapter
+ADAPTERS["greenhouse"] = GreenhouseAdapter
+ADAPTERS["lever"] = LeverAdapter
+ADAPTERS["bibliocommons"] = BiblioCommonsAdapter
+ADAPTERS["leaguesync"] = LeagueSyncAdapter
+ADAPTERS["robotevents"] = RobotEventsAdapter
+ADAPTERS["program_page"] = ProgramPageAdapter
+ADAPTERS["program_listing"] = ProgramListingAdapter
+ADAPTERS["program_page_multi"] = ProgramPageMultiAdapter
+ADAPTERS["activenet_camps"] = ActiveNetCampsAdapter
+ADAPTERS["campbrain"] = CampBrainAdapter
+ADAPTERS["smartrecruiters"] = SmartRecruitersAdapter
+ADAPTERS["workable"] = WorkableAdapter
+ADAPTERS["workday"] = WorkdayAdapter
+ADAPTERS["neogov"] = NeogovAdapter
+
+__all__ = [
+    "Adapter",
+    "EventRef",
+    "RawResponse",
+    "ADAPTERS",
+    "UnknownAdapterType",
+    "get_adapter",
+    "run",
+    "TecRestAdapter",
+    "WordPressRestAdapter",
+    "ICalAdapter",
+    "GenericHtmlAdapter",
+    "LocalistAdapter",
+    "ListingHtmlAdapter",
+    "GreenhouseAdapter",
+    "LeverAdapter",
+    "BiblioCommonsAdapter",
+    "LeagueSyncAdapter",
+    "RobotEventsAdapter",
+    "ProgramPageAdapter",
+    "ProgramListingAdapter",
+    "ProgramPageMultiAdapter",
+    "ActiveNetCampsAdapter",
+    "CampBrainAdapter",
+    "SmartRecruitersAdapter",
+    "WorkableAdapter",
+    "WorkdayAdapter",
+    "NeogovAdapter",
+]

@@ -1,0 +1,313 @@
+"""Tests for partner_scrape.cli's `teams` subcommand (sprint 011,
+ticket 002).
+
+Mirrors `test_cli.py`'s existing convention exactly:
+`TestArgumentWiring`-style classes monkeypatch `cli.run_teams` to prove
+flag parsing/wiring only, and `TestTeamsEndToEnd` exercises the real
+`run_teams()` -> `FTCScoutSource` chain against the actual seeded
+`partner_scrape/teams/registry/ftc-sd.toml`, substituting only
+`cli.PoliteFetcher` with a fixture double so no real socket is opened --
+the same substitution point `TestDiscoverCandidatesEndToEnd` in
+`test_cli.py` already uses for its own subcommand.
+"""
+
+from __future__ import annotations
+
+import json
+from dataclasses import dataclass, field
+from pathlib import Path
+
+import pytest
+
+from partner_scrape import cli
+from partner_scrape.fetch import PoliteFetcher
+from partner_scrape.fetch.fetcher import FetchResponse
+from partner_scrape.teams import export as teams_export
+from partner_scrape.teams.sources.ftcscout import DEFAULT_API_BASE, DEFAULT_REGION, _search_url
+
+FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures" / "teams"
+SEARCH_URL = _search_url(DEFAULT_API_BASE, DEFAULT_REGION)
+
+
+@pytest.fixture(autouse=True)
+def _cache_dir(tmp_path, tmp_path_factory, monkeypatch):
+    """`_run_teams` constructs a real `PoliteFetcher()` before calling
+    `run_teams()` -- even in wiring tests that monkeypatch `cli.run_teams`
+    itself -- and `PoliteFetcher()`'s default `cache_dir` reads
+    `SCRAPE_CACHE_DIR` eagerly (see `config.get_scrape_cache_store`'s "no
+    sane default" `RuntimeError`). `SITE_DIR` is pinned too, matching
+    `test_cli.py`'s own `_cache_dir` fixture, even though the `teams`
+    subcommand this file tests no longer reads it at all (sprint 025
+    ticket 004 removed its `--site-dir` flag along with every
+    `SITE_DIR`-adjacent write `run_teams()` used to make). `TBA_KEY` is
+    unset unconditionally too (ticket 011-003):
+    the real seeded registry this class runs against now also loads
+    `frc-sd.toml`, and `TBA_KEY` is a real, working credential in this
+    project's own `.env` -- without this, a run on a machine with that
+    `.env` sourced could silently behave differently than one without
+    it (the fixture Fetchers below only register FTCScout's URL).
+    Tests that need a valid key set it explicitly.
+
+    Sprint 020 ticket 005: also pins `export.get_data_store()`'s
+    resolution to a throwaway directory. `TestTeamsEndToEnd.
+    test_real_run_writes_teams_json` and
+    `test_never_writes_opportunities_json_or_scrape_meta_anywhere` drive
+    the real `cli.main(["teams", ...])` -> `run_teams()` ->
+    `export_teams()` chain without `--dry-run`, and `run_teams()` never
+    passes `own_data_dir` through -- without this, those calls would
+    write real files into this repo's actual `data/` directory on every
+    test run. Mirrors `tests/teams/test_pipeline.py`'s identical
+    `_own_data_dir_default` fixture, folded into this file's existing
+    single autouse fixture rather than a second one.
+
+    Sprint 020 ticket 007: also pins `cli.get_data_store()`'s
+    resolution to the same throwaway directory.
+    `TestNeverCrossesIntoTheOtherPipeline.test_default_run_never_calls_run_teams`
+    drives the real no-subcommand/`run` path via `cli.main([])`
+    (reporting enabled by default, no `--dry-run`) -- as of ticket 007,
+    that path writes `yield-history.json` into `cli.get_data_store()`
+    a second time, alongside the `SITE_DIR` copy. Without pinning this
+    too, that single test would write a real `yield-history.json` into
+    this repo's actual `data/` directory on every test run.
+    """
+    monkeypatch.setenv("SCRAPE_CACHE_DIR", str(tmp_path))
+    monkeypatch.setenv("SITE_DIR", str(tmp_path))
+    monkeypatch.delenv("TBA_KEY", raising=False)
+    fake_own_data_dir = tmp_path_factory.mktemp("own-data-default")
+    monkeypatch.setenv("PARTNER_SCRAPE_DATA_DIR", str(fake_own_data_dir))
+    monkeypatch.setenv("PARTNER_SCRAPE_DATA_DIR", str(fake_own_data_dir))
+    # `cli.main()`'s no-subcommand/`run` path calls `publish.project(...)`
+    # after `run()` returns, which raises loudly on a missing curated
+    # `partners.json` -- only `TestNeverCrossesIntoTheOtherPipeline`'s
+    # regression test below reaches that path at all, but it is stubbed
+    # here unconditionally, matching `test_cli.py`'s own `_cache_dir`
+    # fixture, so this file never needs to know about that unrelated
+    # pipeline step.
+    monkeypatch.setattr(
+        cli.publish,
+        "project",
+        lambda **kwargs: {"partner_count": 0, "current_event_count": 0, "past_event_count": 0},
+    )
+    return tmp_path
+
+
+@dataclass
+class _FixtureFetcher:
+    responses: dict[str, FetchResponse]
+    calls: list[str] = field(default_factory=list)
+
+    def get(self, url: str, headers: dict[str, str] | None = None) -> FetchResponse:
+        self.calls.append(url)
+        return self.responses[url]
+
+
+def _ftcscout_fixture_fetcher() -> _FixtureFetcher:
+    body = (FIXTURES_DIR / "ftcscout_search.json").read_text()
+    return _FixtureFetcher({SEARCH_URL: FetchResponse(url="", status=200, headers={}, body=body)})
+
+
+class TestArgumentWiring:
+    def test_defaults_pass_none_through_and_construct_a_polite_fetcher(self, monkeypatch):
+        captured = {}
+
+        def fake_run_teams(**kwargs):
+            captured.update(kwargs)
+            return {"meta": {"total": 0}, "teams": []}
+
+        monkeypatch.setattr(cli, "run_teams", fake_run_teams)
+
+        exit_code = cli.main(["teams"])
+
+        assert exit_code == 0
+        assert captured["source"] is None
+        assert "site_dir" not in captured
+        assert captured["dry_run"] is False
+        assert captured["no_sponsors"] is False
+        assert isinstance(captured["fetcher"], PoliteFetcher)
+
+    def test_flags_are_parsed_and_forwarded(self, monkeypatch):
+        captured = {}
+
+        def fake_run_teams(**kwargs):
+            captured.update(kwargs)
+            return {"meta": {"total": 0}, "teams": []}
+
+        monkeypatch.setattr(cli, "run_teams", fake_run_teams)
+
+        exit_code = cli.main(
+            [
+                "teams",
+                "--dry-run",
+                "--source",
+                "ftcscout",
+                "--no-sponsors",
+            ]
+        )
+
+        assert exit_code == 0
+        assert captured["dry_run"] is True
+        assert captured["source"] == "ftcscout"
+        assert "site_dir" not in captured
+        assert captured["no_sponsors"] is True
+
+    def test_prints_a_summary_including_the_written_team_count(self, monkeypatch, capsys):
+        monkeypatch.setattr(
+            cli,
+            "run_teams",
+            lambda **kwargs: {
+                "meta": {"total": 2},
+                "teams": [{"team_id": "ftc-1"}, {"team_id": "ftc-2"}],
+            },
+        )
+
+        cli.main(["teams"])
+
+        out = capsys.readouterr().out
+        assert "2" in out
+        assert "teams" in out
+
+    def test_dry_run_summary_notes_nothing_was_written(self, monkeypatch, capsys):
+        monkeypatch.setattr(
+            cli,
+            "run_teams",
+            lambda **kwargs: {"meta": {"total": 1}, "teams": [{"team_id": "ftc-1"}]},
+        )
+
+        cli.main(["teams", "--dry-run"])
+
+        out = capsys.readouterr().out
+        assert "dry run" in out.lower()
+
+    def test_help_text_lists_the_teams_flags(self, capsys):
+        with pytest.raises(SystemExit):
+            cli.main(["teams", "--help"])
+
+        out = capsys.readouterr().out
+        assert "--dry-run" in out
+        assert "--source" in out
+        assert "--no-sponsors" in out
+        # Sprint 025 ticket 004: inverted from this test's pre-ticket
+        # form -- the teams subcommand no longer defines a --site-dir
+        # flag at all.
+        assert "--site-dir" not in out
+
+    def test_top_level_help_text_mentions_the_teams_subcommand(self, capsys):
+        with pytest.raises(SystemExit):
+            cli.main(["--help"])
+
+        out = capsys.readouterr().out
+        assert "teams" in out
+
+
+class TestNeverCrossesIntoTheOtherPipeline:
+    """The two subcommands' structural isolation, at the CLI layer: a
+    `teams` invocation must never reach `pipeline.run()`, and the
+    default `run` invocation must never reach `run_teams()`."""
+
+    def test_teams_never_calls_the_opportunities_pipeline(self, monkeypatch):
+        def _boom(**kwargs):
+            raise AssertionError("teams subcommand must never call pipeline.run()")
+
+        monkeypatch.setattr(cli, "run", _boom)
+        monkeypatch.setattr(
+            cli, "run_teams", lambda **kwargs: {"meta": {"total": 0}, "teams": []}
+        )
+
+        exit_code = cli.main(["teams"])  # must not raise
+
+        assert exit_code == 0
+
+    def test_default_run_never_calls_run_teams(self, monkeypatch):
+        def _boom(**kwargs):
+            raise AssertionError("the no-subcommand/run path must never call run_teams")
+
+        monkeypatch.setattr(cli, "run_teams", _boom)
+        monkeypatch.setattr(cli, "run", lambda **kwargs: [])
+
+        exit_code = cli.main([])  # must not raise
+
+        assert exit_code == 0
+
+
+class TestTeamsEndToEnd:
+    """A genuine end-to-end run against the real seeded
+    `partner_scrape/teams/registry/ftc-sd.toml` -- only `cli.PoliteFetcher`
+    is substituted with a fixture double, so no real socket is ever
+    opened. Matches this ticket's Acceptance Criteria: "partner-scrape
+    teams --dry-run -v against ticket 001's fixture reports 152 FTC
+    teams with no network access and no disk write."
+
+    Since sprint 012, the real registry also loads `fll-sd.toml`, whose
+    `StaticRosterSource` reads the real, committed 48-team FLL roster
+    straight off disk and never touches the fetcher -- it always
+    succeeds regardless of what this class's fixture Fetcher registers.
+    The two tests below whose whole point is FTCScout's own count add
+    `--source ftcscout` so the FLL roster doesn't fold into an assertion
+    about FTCScout specifically.
+    """
+
+    def test_dry_run_reports_152_teams_with_no_network_and_no_disk_write(
+        self, monkeypatch, tmp_path, capsys
+    ):
+        fetcher = _ftcscout_fixture_fetcher()
+        monkeypatch.setattr(cli, "PoliteFetcher", lambda: fetcher)
+
+        exit_code = cli.main(["teams", "--source", "ftcscout", "--dry-run", "-v"])
+
+        assert exit_code == 0
+        # No live network call: the fetcher is a fixture, never a real
+        # socket. Pre-ticket-013-001 this asserted `fetcher.calls ==
+        # [SEARCH_URL]` exactly. Sprint 013 ticket 001 added
+        # `verify_team_websites()`, wired unconditionally into
+        # `run_teams()` -- so any team whose `website` the ticket 006
+        # overlay populated (this real, live-captured FTCScout fixture
+        # includes such teams -- see
+        # tests/teams/test_pipeline.py's matching test for the full
+        # rationale) now gets its robots.txt probed too. None of those
+        # URLs are in this fixture's canned `responses`, so each is
+        # caught by `verify_team_websites()`'s own per-team exception
+        # isolation and marked "unverified" -- never a real page fetch,
+        # asserted directly below.
+        assert SEARCH_URL in fetcher.calls
+        assert all(
+            call == SEARCH_URL or call.endswith("/robots.txt") for call in fetcher.calls
+        )
+        out = capsys.readouterr().out
+        assert "152" in out
+        assert "dry run" in out.lower()
+        # Sprint 025 ticket 004: run_teams() no longer accepts a
+        # site_dir at all, and export_teams()'s own_data_dir default
+        # (pinned by the _cache_dir fixture above) resolves elsewhere
+        # entirely -- nothing is ever written under this test's own
+        # tmp_path.
+        assert list(tmp_path.iterdir()) == []
+
+    def test_real_run_writes_teams_json(self, monkeypatch, tmp_path):
+        fetcher = _ftcscout_fixture_fetcher()
+        monkeypatch.setattr(cli, "PoliteFetcher", lambda: fetcher)
+
+        # Sprint 025 ticket 004: own_data_dir is the sole write target
+        # now -- pin it directly here (overriding the module-level
+        # _cache_dir fixture's own pin) so this test can read the
+        # written teams.json back.
+        own_data_dir = tmp_path / "own-data"
+        monkeypatch.setenv("PARTNER_SCRAPE_DATA_DIR", str(own_data_dir))
+
+        exit_code = cli.main(["teams", "--source", "ftcscout"])
+
+        assert exit_code == 0
+        primary_teams = json.loads((own_data_dir / "teams.json").read_text())
+        assert primary_teams["meta"]["total"] == 152
+
+    def test_never_writes_opportunities_json_or_scrape_meta_anywhere(
+        self, monkeypatch, tmp_path
+    ):
+        fetcher = _ftcscout_fixture_fetcher()
+        monkeypatch.setattr(cli, "PoliteFetcher", lambda: fetcher)
+
+        own_data_dir = tmp_path / "own-data"
+        monkeypatch.setenv("PARTNER_SCRAPE_DATA_DIR", str(own_data_dir))
+        cli.main(["teams"])
+
+        assert not list(tmp_path.rglob("opportunities.json"))
+        assert not list(tmp_path.rglob("scrape-meta.json"))

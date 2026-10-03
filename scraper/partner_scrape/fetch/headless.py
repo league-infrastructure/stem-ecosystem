@@ -1,0 +1,371 @@
+"""Headless Fetcher: ``PlaywrightFetcher``, retrieving one URL's fully
+client-rendered HTML via a real headless browser.
+
+See sprint.md's Architecture > Headless Fetcher: ``PlaywrightFetcher``
+implements the exact same ``Fetcher.get(url, headers=None) ->
+FetchResponse`` contract ``fetch/fetcher.py``'s ``UrllibFetcher``
+does, so it drops into ``PoliteFetcher``'s existing ``fetcher=``
+constructor parameter (``fetch/cache.py``) with zero changes to
+``PoliteFetcher``, ``fetch/robots.py``, or ``fetch/throttle.py`` -- no
+adapter or discovery module ever needs to know headless fetching
+exists (Pipeline, ticket 005, is the only module that constructs this
+class).
+
+**Critical constraint**: ``playwright`` is an optional dependency
+group (``pyproject.toml``: ``[project.optional-dependencies] headless
+= ["playwright>=1.40"]``), never a base dependency. The real ``import
+playwright`` call is deferred all the way into
+:func:`_default_page_factory`, which only runs on the first real
+(non-fixture) call to :meth:`PlaywrightFetcher.get` -- never at module
+import time, never in ``__init__``. Tests inject a fixture
+``page_factory`` (matching this repo's existing ``Fetcher``/
+``LLMClient`` DI pattern -- see ``fetch/fetcher.py`` and
+``enrich/llm_client.py`` -- applied one level deeper here, since the
+*dependency itself*, not just the network call, must be avoidable) and
+so never trigger that import; the whole default test suite runs with
+``playwright`` fully uninstalled.
+
+**(Sprint 014)** ``PlaywrightFetcher.get()`` holds an instance-owned
+``threading.Lock`` for its whole duration -- page construction
+(:meth:`_get_page`) through :meth:`HeadlessPage.content`. This is
+defense in depth, not the load-bearing guarantee: a single shared
+Playwright ``Page`` is not safe for concurrent navigation from
+multiple threads, and Playwright's own sync API additionally expects
+to be driven from one consistent thread, which a bare lock cannot by
+itself guarantee (a lock serializes *when* calls run, not *which*
+thread runs them). The load-bearing guarantee -- every call to a
+given shared instance originates from one consistent thread for a
+run's lifetime -- is provided by ``pipeline.py``'s dedicated
+single-worker executor for ``headless``-strategy sources. See
+``fetch/DESIGN.md``'s sprint 014 section and
+``partner_scrape/DESIGN.md``'s new concurrency convention for the
+full rationale.
+"""
+
+from __future__ import annotations
+
+import threading
+import urllib.parse
+from typing import Callable, Protocol
+
+from partner_scrape.fetch.fetcher import DEFAULT_USER_AGENT, FetchResponse
+
+#: Fixed navigation wait timeout (milliseconds), applied before reading
+#: rendered content. No per-source tuning (see sprint.md's Architecture
+#: > Open Question 4) -- a future ``config`` key can introduce
+#: per-source overrides if a real registered site ever needs one; this
+#: constant is the single source of truth until then.
+#:
+#: **(Sprint 014 revision)** The name predates a same-ticket change:
+#: ``get()`` used to pass ``wait_until="networkidle"`` to
+#: ``page.goto()``, but live validation against the sprint's own
+#: newly-flagged Wix sources found that strategy times out for 8 of 8
+#: real Wix homepage fetches -- these sites keep a persistent
+#: background connection (analytics/chat widget) open indefinitely, so
+#: the network never truly idles, even though the real content
+#: finishes rendering well within a second. ``get()`` now passes
+#: ``wait_until="load"`` instead (a strictly less strict, still
+#: standard Playwright wait condition; content already reflects the
+#: fully hydrated page by the time ``load`` fires for every site
+#: tested). This constant still bounds that wait -- same value, same
+#: role, different condition -- kept as one name/one constant (no new
+#: per-source config surface) per this ticket's own scope boundary.
+#: See ``fetch/DESIGN.md``'s sprint 014 section for the full rationale
+#: and live evidence.
+NETWORK_IDLE_TIMEOUT_MS = 15_000
+
+#: Name of the optional dependency group (pyproject.toml
+#: ``[project.optional-dependencies]`` key) that provides
+#: ``playwright`` -- named here once so the actionable error message
+#: below and ``pyproject.toml`` cannot silently drift apart.
+HEADLESS_EXTRA_NAME = "headless"
+
+#: URL path extensions that never hold the client-rendered HTML
+#: ``get()``'s navigate-and-read path exists for -- a bare sitemap,
+#: feed, or data file. Fetching one of these via ``page.goto()`` +
+#: ``page.content()`` either returns Chromium's own viewer-wrapped
+#: markup (observed live: ``.xml`` sitemaps on 5 Wix-hosted sources)
+#: or aborts navigation outright with ``net::ERR_ABORTED`` (observed
+#: live: 4 more sources) -- see issue 37 (sprint 015) and
+#: ``fetch/DESIGN.md``'s sprint 015 section. There is no real
+#: ``Content-Type`` to inspect before a request is made, so this is
+#: necessarily a URL heuristic, not a response-header one.
+#:
+#: Deliberately excludes ``.txt``: ``fetch/robots.py`` fetches
+#: ``robots.txt`` through this same ``get()`` for every source
+#: (headless or not), and that path is untouched, evidenced-bug-free
+#: territory this ticket's scope does not extend to (see the ticket's
+#: "no ``robots.py`` changes" boundary) -- adding ``.txt`` here would
+#: silently change robots.txt retrieval behavior as a side effect
+#: instead of a deliberate, evidenced fix.
+_RAW_RESOURCE_EXTENSIONS = (".xml", ".json", ".csv", ".rss", ".atom")
+
+
+def _looks_like_raw_resource(url: str) -> bool:
+    """Whether ``url``'s path suggests a raw, non-HTML resource that
+    :meth:`PlaywrightFetcher.get` should retrieve through a raw
+    request instead of navigating -- see :data:`_RAW_RESOURCE_EXTENSIONS`.
+    """
+    path = urllib.parse.urlsplit(url).path
+    return path.lower().endswith(_RAW_RESOURCE_EXTENSIONS)
+
+
+class HeadlessNavigationResponse(Protocol):
+    """The minimal shape read off a Playwright navigation ``Response``
+    (or a fixture double standing in for one).
+    """
+
+    status: int
+
+
+class HeadlessRawResponse(Protocol):
+    """The minimal shape read off a Playwright raw ``APIResponse``
+    (or a fixture double standing in for one) -- the result of routing
+    a non-HTML target through :attr:`HeadlessPage.request` instead of
+    navigating. Mirrors the slice of the real ``playwright.sync_api.
+    APIResponse`` surface this module actually reads: ``status`` and
+    ``headers`` are properties, ``text()`` is a method, on both the
+    real type and the fixture double.
+    """
+
+    status: int
+    headers: dict[str, str]
+
+    def text(self) -> str:
+        """Return the raw response body, decoded as text."""
+        ...
+
+
+class HeadlessRequestContext(Protocol):
+    """The minimal Playwright ``APIRequestContext``-shaped seam this
+    module depends on for raw (non-navigating) requests -- what
+    ``page.request`` returns on a real ``Page``.
+    """
+
+    def get(
+        self, url: str, headers: dict[str, str] | None = None
+    ) -> HeadlessRawResponse:
+        """Issue a raw GET request to ``url`` with optional ``headers``,
+        without navigating -- no rendering, no ``page.content()``.
+        """
+        ...
+
+
+class HeadlessPage(Protocol):
+    """The minimal Playwright ``Page``-shaped seam this module depends
+    on. Deliberately narrow -- a fixture test double needs only
+    ``goto``/``content``/``request`` to stand in for a real browser
+    page, exactly as ``fetch/fetcher.py``'s ``Fetcher`` protocol lets
+    ``FixtureFetcher`` stand in for ``UrllibFetcher`` with no real
+    socket.
+
+    **(Sprint 015)** ``request`` was added alongside ``goto``/
+    ``content`` so :meth:`PlaywrightFetcher.get` can route a non-HTML
+    target (:func:`_looks_like_raw_resource`) through a raw request
+    instead of navigating -- see issue 37.
+    """
+
+    def goto(
+        self,
+        url: str,
+        timeout: float | None = None,
+        wait_until: str | None = None,
+    ) -> HeadlessNavigationResponse:
+        """Navigate to ``url``, waiting for ``wait_until`` (bounded by
+        ``timeout`` milliseconds) before returning the navigation
+        response.
+        """
+        ...
+
+    def content(self) -> str:
+        """Return the current (fully rendered) page HTML."""
+        ...
+
+    @property
+    def request(self) -> HeadlessRequestContext:
+        """The page's raw ``APIRequestContext`` -- issues requests
+        without navigating or rendering.
+        """
+        ...
+
+
+class PlaywrightNotInstalledError(RuntimeError):
+    """Raised when a real (non-fixture) ``PlaywrightFetcher`` is used
+    but the ``playwright`` package is not installed.
+
+    Deliberately not a bare ``ImportError`` reraised as-is -- this
+    names the specific optional dependency group an operator needs to
+    install, matching sprint.md's explicit requirement that a source
+    flagged ``headless`` without ``playwright`` installed produce "a
+    clear, actionable error ... rather than a bare ImportError". Still
+    just an ``Exception`` subclass, so Pipeline's existing per-source
+    ``try/except`` (SUC-008's error flow) catches it with no new
+    error-handling code.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(
+            "PlaywrightFetcher requires the optional "
+            f"{HEADLESS_EXTRA_NAME!r} dependency group, which is not "
+            "installed. Install it with: "
+            f"uv sync --extra {HEADLESS_EXTRA_NAME} "
+            "(see pyproject.toml's [project.optional-dependencies])."
+        )
+
+
+def _default_page_factory() -> HeadlessPage:
+    """Lazily import ``playwright`` and launch a real headless browser
+    page.
+
+    This is the ONLY place in this module -- and, transitively, in
+    ``partner_scrape.fetch`` -- that imports ``playwright``. It is
+    called at most once per :class:`PlaywrightFetcher` instance, only
+    when that instance is constructed with no injected
+    ``page_factory`` and :meth:`PlaywrightFetcher.get` is actually
+    called for the first time. Fixture-backed tests always inject
+    their own ``page_factory`` and so never reach this function, which
+    is what lets the default test suite import and exercise this
+    module with ``playwright`` fully uninstalled.
+
+    No credentials or secrets are placed in the launched browser's
+    profile/environment (sprint.md's Migration Concerns risk note).
+    """
+    try:
+        from playwright.sync_api import sync_playwright
+    except ImportError as exc:
+        raise PlaywrightNotInstalledError() from exc
+
+    playwright = sync_playwright().start()
+    browser = playwright.chromium.launch()
+    context = browser.new_context(user_agent=DEFAULT_USER_AGENT)
+    return context.new_page()
+
+
+class PlaywrightFetcher:
+    """The headless ``Fetcher``: retrieves one URL's fully
+    client-rendered HTML via a real (or, in tests, fixture-double)
+    browser page.
+
+    Implements the same ``Fetcher.get(url, headers=None) ->
+    FetchResponse`` contract ``UrllibFetcher`` does (``fetch/
+    fetcher.py``) -- ``PoliteFetcher`` (``fetch/cache.py``) neither
+    knows nor cares which concrete ``Fetcher`` it wraps.
+
+    ``page_factory``, if given, is called at most once (its return
+    value is cached and reused across every ``get()`` call on this
+    instance) and must return a ``HeadlessPage``-shaped object -- real
+    or fixture. Omit it to get a single lazily-constructed real
+    Playwright page, built only on the first real ``get()`` call
+    (never at ``__init__`` time, never at module import time) -- see
+    :func:`_default_page_factory`.
+
+    **(Sprint 014)** ``self._lock`` (an instance-owned
+    ``threading.Lock``) is held for :meth:`get`'s whole duration --
+    page construction through :meth:`content` -- as defense in depth
+    against concurrent, multi-threaded access to the one shared page.
+    See this module's own docstring for why this lock alone does not
+    guarantee Playwright's thread-affinity expectation, and where that
+    guarantee actually lives.
+    """
+
+    def __init__(self, page_factory: Callable[[], HeadlessPage] | None = None) -> None:
+        self._page_factory = page_factory or _default_page_factory
+        self._page: HeadlessPage | None = None
+        self._lock = threading.Lock()
+
+    def _get_page(self) -> HeadlessPage:
+        if self._page is None:
+            self._page = self._page_factory()
+        return self._page
+
+    def get(self, url: str, headers: dict[str, str] | None = None) -> FetchResponse:
+        """Retrieve ``url`` as a ``FetchResponse``.
+
+        **(Sprint 015)** If ``url`` looks like a raw, non-HTML resource
+        (:func:`_looks_like_raw_resource` -- a bare sitemap, feed, or
+        data file), it is retrieved through :attr:`HeadlessPage.request`
+        (:meth:`_get_raw_response`) instead of being navigated to.
+        Navigating to a raw resource either returns Chromium's own
+        viewer-wrapped markup instead of the real body, or aborts
+        navigation outright (``net::ERR_ABORTED``) -- see issue 37
+        (sprint 015) and ``fetch/DESIGN.md``'s sprint 015 section. This
+        keeps the method's external contract identical
+        (``Fetcher.get(url, headers=None) -> FetchResponse``) --
+        ``PoliteFetcher``, every adapter, and every discovery module
+        remain unaware headless fetching exists, let alone that it now
+        has two internal retrieval paths.
+
+        Otherwise, navigates to ``url``, waits for the page to finish
+        loading (``wait_until="load"``, bounded by
+        :data:`NETWORK_IDLE_TIMEOUT_MS`), and returns the rendered HTML.
+
+        **(Sprint 014 revision)** Uses ``wait_until="load"``, not the
+        stricter ``"networkidle"`` this method used before the same
+        ticket's own live validation: real Wix sites (this ticket's
+        primary newly-flagged cohort) keep a persistent background
+        connection open indefinitely, so ``"networkidle"`` never fires
+        within the timeout even though the real content is already
+        fully rendered. See :data:`NETWORK_IDLE_TIMEOUT_MS`'s docstring
+        for the live evidence.
+
+        ``status`` on the returned ``FetchResponse`` is always taken
+        from the real navigation (or raw) response -- never hardcoded --
+        so ``PoliteFetcher``'s ``200 <= status < 300`` cache-write branch
+        behaves identically for a headless fetch and a static one.
+
+        **(Sprint 014)** Holds ``self._lock`` for the method's entire
+        duration -- ``_get_page()`` (lazy page construction) through
+        the navigation or raw-request call -- so two threads calling
+        ``get()`` on the same instance concurrently never interleave
+        their calls against the one shared page. Defense in depth
+        only: see the class docstring for why the real thread-affinity
+        guarantee lives in ``pipeline.py``'s dispatch, not here.
+
+        Raises:
+            PlaywrightNotInstalledError: no ``page_factory`` was
+                injected and the ``playwright`` package is not
+                installed.
+        """
+        with self._lock:
+            page = self._get_page()
+
+            if _looks_like_raw_resource(url):
+                return self._get_raw_response(page, url, headers)
+
+            if headers:
+                set_extra_headers = getattr(page, "set_extra_http_headers", None)
+                if set_extra_headers is not None:
+                    set_extra_headers(headers)
+
+            navigation = page.goto(url, timeout=NETWORK_IDLE_TIMEOUT_MS, wait_until="load")
+            body = page.content()
+            response_headers = dict(getattr(navigation, "headers", None) or {})
+
+            return FetchResponse(
+                url=url,
+                status=navigation.status,
+                headers=response_headers,
+                body=body,
+            )
+
+    def _get_raw_response(
+        self, page: HeadlessPage, url: str, headers: dict[str, str] | None
+    ) -> FetchResponse:
+        """Retrieve ``url`` through ``page.request`` (Playwright's raw
+        ``APIRequestContext`` surface) instead of navigating -- the
+        sprint 015 fix for :func:`_looks_like_raw_resource` targets.
+
+        Called with :attr:`_lock` already held by :meth:`get`. ``headers``
+        is passed straight through to the request call (the real
+        conditional-GET forwarding mechanism for this path) rather than
+        via ``set_extra_http_headers``, which applies to page
+        navigation, not ``page.request``.
+        """
+        response = page.request.get(url, headers=headers or None)
+        response_headers = dict(getattr(response, "headers", None) or {})
+        return FetchResponse(
+            url=url,
+            status=response.status,
+            headers=response_headers,
+            body=response.text(),
+        )

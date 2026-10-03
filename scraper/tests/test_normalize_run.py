@@ -1,0 +1,1188 @@
+"""Tests for partner_scrape.normalize.run: the normalize.run() entry point.
+
+Exercises the full collapse -> dedup -> map pipeline together, covering
+the ticket's acceptance criteria that only make sense at the entry-point
+level (full Opportunity field presence, end-to-end partner join,
+end-to-end cross-source/recurring collapse). Per-stage behavior is
+covered in test_normalize_{taxonomy,collapse,dedup,partners}.py -- this
+file is deliberately thin on stage-internal edge cases.
+"""
+
+from __future__ import annotations
+
+from datetime import date, datetime
+from pathlib import Path
+
+from partner_scrape.model import Event, slugify
+from partner_scrape.normalize.run import (
+    DEFAULT_OPPORTUNITY_TYPE,
+    WORK_BASED_LEARNING_TYPE,
+    Opportunity,
+    run,
+)
+
+FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
+PARTNERS_PATH = FIXTURES_DIR / "partners.json"
+
+
+def _event(
+    source_id: str = "coastalrootsfarm",
+    title: str = "Farm Tour",
+    start: datetime | None = None,
+    end: datetime | None = None,
+    location: str = "",
+    confidence: float = 1.0,
+    description: str = "",
+    cost: str = "",
+    kind: str = "event",
+    external_id: str = "",
+    image_url: str = "",
+    registration_url: str = "",
+    url: str = "",
+) -> Event:
+    event = Event(source_id=source_id, kind=kind, external_id=external_id)
+    event.set("title", title, source="fixture", confidence=confidence)
+    if start is not None:
+        event.set("start", start, source="fixture", confidence=confidence)
+    if end is not None:
+        event.set("end", end, source="fixture", confidence=confidence)
+    if location:
+        event.set("location", location, source="fixture", confidence=confidence)
+    if description:
+        event.set("description", description, source="fixture", confidence=confidence)
+    if cost:
+        event.set("cost", cost, source="fixture", confidence=confidence)
+    if image_url:
+        event.set("image_url", image_url, source="fixture", confidence=confidence)
+    if registration_url:
+        event.set("registration_url", registration_url, source="fixture", confidence=confidence)
+    if url:
+        event.set("url", url, source="fixture", confidence=confidence)
+    return event
+
+
+class TestFieldMapping:
+    def test_every_site_schema_field_is_present_never_missing(self):
+        event = _event(start=datetime(2026, 8, 1, 9, 0))
+
+        [opportunity] = run([event], PARTNERS_PATH)
+
+        for f in (
+            "slug", "title", "partner_name", "partner_id", "description", "link",
+            "availability", "date_start", "date_end", "age_grade_level", "cost_range",
+            "time_of_day", "opportunity_type", "areas_of_interest", "specific_attention",
+            "financial_support", "ngss_aligned", "location", "latitude", "longitude",
+            "contact_name", "contact_email", "contact_phone", "logo_src", "eligibility",
+            "image_src",
+        ):
+            assert hasattr(opportunity, f), f"missing field {f!r}"
+
+    def test_image_src_defaults_to_empty_string(self):
+        """No `image_resolver` given (today's default) -- `image_src`
+        stays `""`, matching `logo_src`'s own "no match" default and
+        SUC-008's Alternate Flow. Zero behavior change for every existing
+        `run()` caller that predates ticket 008."""
+        event = _event(start=datetime(2026, 8, 1, 9, 0))
+
+        [opportunity] = run([event], PARTNERS_PATH)
+
+        assert opportunity.image_src == ""
+
+    def test_unknown_values_are_empty_string_or_list_never_none(self):
+        event = _event(start=datetime(2026, 8, 1, 9, 0))
+
+        [opportunity] = run([event], PARTNERS_PATH)
+
+        assert opportunity.description == ""
+        assert opportunity.contact_name == ""
+        assert opportunity.contact_email == ""
+        assert opportunity.contact_phone == ""
+        assert opportunity.specific_attention == []
+        assert opportunity.date_end == ""
+
+    def test_maps_title_and_date_start(self):
+        event = _event(title="Farm Tour", start=datetime(2026, 8, 1, 9, 0))
+
+        [opportunity] = run([event], PARTNERS_PATH)
+
+        assert opportunity.title == "Farm Tour"
+        assert opportunity.date_start.startswith("2026-08-01T09:00:00")
+
+    def test_decodes_html_entities_in_title(self):
+        event = _event(
+            title="Stay Classy O&#8217;Side: Shark &#038; Ray",
+            start=datetime(2026, 8, 1, 9, 0),
+        )
+
+        [opportunity] = run([event], PARTNERS_PATH)
+
+        assert opportunity.title == "Stay Classy O’Side: Shark & Ray"
+
+
+class TestSlugComputation:
+    """`Opportunity.slug` (sprint 009 ticket 002) is now a stable,
+    cross-run identity -- `slugify(link)` when the Event has a link,
+    else `slugify(title) + date` -- not merely a within-export display
+    key. No org/partner prefix: the slug is stored *inside* a
+    partner-scoped directory (ticket 003), so the partner is already
+    implied by where it lives.
+    """
+
+    def test_link_present_uses_slugified_registration_url(self):
+        event = _event(
+            title="Farm Tour",
+            start=datetime(2026, 8, 1, 9, 0),
+            registration_url="https://coastalrootsfarm.org/events/farm-tour",
+        )
+
+        [opportunity] = run([event], PARTNERS_PATH)
+
+        assert opportunity.slug == slugify("https://coastalrootsfarm.org/events/farm-tour")
+
+    def test_url_used_when_registration_url_is_absent(self):
+        event = _event(
+            title="Farm Tour",
+            start=datetime(2026, 8, 1, 9, 0),
+            url="https://coastalrootsfarm.org/farm-tour",
+        )
+
+        [opportunity] = run([event], PARTNERS_PATH)
+
+        assert opportunity.slug == slugify("https://coastalrootsfarm.org/farm-tour")
+
+    def test_registration_url_preferred_over_url_when_both_set(self):
+        event = _event(
+            title="Farm Tour",
+            start=datetime(2026, 8, 1, 9, 0),
+            registration_url="https://coastalrootsfarm.org/register",
+            url="https://coastalrootsfarm.org/listing",
+        )
+
+        [opportunity] = run([event], PARTNERS_PATH)
+
+        assert opportunity.slug == slugify("https://coastalrootsfarm.org/register")
+
+    def test_no_link_falls_back_to_title_and_date(self):
+        event = _event(title="Farm Tour", start=datetime(2026, 8, 1, 9, 0))
+
+        [opportunity] = run([event], PARTNERS_PATH)
+
+        assert opportunity.slug == "farm_tour_20260801"
+
+    def test_slug_never_includes_org_or_partner_name(self):
+        event = _event(source_id="crf", title="Farm Tour", start=datetime(2026, 8, 1, 9, 0))
+
+        [opportunity] = run(
+            [event], PARTNERS_PATH, source_org_names={"crf": "Coastal Roots Farm"}
+        )
+
+        assert opportunity.slug == "farm_tour_20260801"
+        assert "coastal" not in opportunity.slug
+        assert "crf" not in opportunity.slug
+
+    def test_slug_is_stable_across_runs_with_equivalent_input_link_branch(self):
+        """The same real-world event, normalized in two separate `run()`
+        calls from equivalent-but-not-identical input -- an unrelated
+        field (here, the description) changing between runs must not
+        move the link-based slug. This is the property ticket 003's
+        per-partner log depends on to recognize "same event" across
+        runs."""
+        link = "https://coastalrootsfarm.org/events/farm-tour"
+        first = _event(
+            title="Farm Tour",
+            start=datetime(2026, 8, 1, 9, 0),
+            registration_url=link,
+            description="Come tour the farm!",
+        )
+        second = _event(
+            title="Farm Tour",
+            start=datetime(2026, 8, 1, 9, 0),
+            registration_url=link,
+            description="Come tour the farm! Updated details this run.",
+        )
+
+        [opp1] = run([first], PARTNERS_PATH)
+        [opp2] = run([second], PARTNERS_PATH)
+
+        assert opp1.slug == opp2.slug
+
+    def test_slug_is_stable_across_runs_with_equivalent_input_title_date_branch(self):
+        """Same stability property as the link branch above, for the
+        no-link title+date fallback."""
+        first = _event(
+            title="Farm Tour",
+            start=datetime(2026, 8, 1, 9, 0),
+            description="Come tour the farm!",
+        )
+        second = _event(
+            title="Farm Tour",
+            start=datetime(2026, 8, 1, 9, 0),
+            description="Come tour the farm! Updated wording this run.",
+        )
+
+        [opp1] = run([first], PARTNERS_PATH)
+        [opp2] = run([second], PARTNERS_PATH)
+
+        assert opp1.slug == opp2.slug
+
+    def test_different_partners_same_title_and_day_no_link_share_the_same_slug_pre_dedup(self):
+        """Since the org prefix is gone, two different orgs' same-titled,
+        same-day events (no link) now collide on slug string *before*
+        any export-time disambiguation. Differing venue keeps
+        cross-source dedup from merging them into one Opportunity, so
+        both survive with an identical slug -- `export/writer.py`'s
+        `_dedupe_slugs` remains the backstop that disambiguates this in
+        the flat legacy export (see test_export.py::TestSlugDedup)."""
+        a = _event(
+            source_id="org_a",
+            title="Community Cleanup",
+            start=datetime(2026, 8, 1, 9, 0),
+            location="North Park",
+        )
+        b = _event(
+            source_id="org_b",
+            title="Community Cleanup",
+            start=datetime(2026, 8, 1, 9, 0),
+            location="South Park",
+        )
+
+        opportunities = run([a, b], PARTNERS_PATH)
+
+        assert len(opportunities) == 2
+        assert opportunities[0].slug == opportunities[1].slug == "community_cleanup_20260801"
+
+
+class TestTaxonomyDerivation:
+    def test_areas_age_time_of_day_and_cost_are_derived(self):
+        event = _event(
+            title="Family Tide Pool Walk",
+            start=datetime(2026, 8, 1, 9, 0),
+            description="A morning tide pool exploration for the whole family",
+            cost="Free",
+        )
+
+        [opportunity] = run([event], PARTNERS_PATH)
+
+        assert "Biology / LifeSciences" in opportunity.areas_of_interest
+        assert opportunity.age_grade_level == ["Family"]
+        assert opportunity.time_of_day == ["Morning"]
+        assert opportunity.cost_range == "Free"
+
+
+class TestSpecificAttentionAndRegionDerivation:
+    """Sprint 033, issue 34: `_to_opportunity()` derives both
+    `specific_attention` and the new internal `region` field, and
+    `region` never leaks into the site-schema serialization."""
+
+    def test_bilingual_signal_lands_on_specific_attention(self):
+        event = _event(title="Bilingual Storytime", location="Chula Vista, CA")
+
+        [opportunity] = run([event], PARTNERS_PATH)
+
+        assert opportunity.specific_attention == ["Programs in Spanish"]
+
+    def test_accessibility_signal_lands_on_specific_attention(self):
+        event = _event(title="Sensory Friendly Mornings")
+
+        [opportunity] = run([event], PARTNERS_PATH)
+
+        assert opportunity.specific_attention == ["Programs for students with disabilities"]
+
+    def test_region_is_derived_from_location(self):
+        event = _event(title="Farm Tour", location="El Cajon, CA")
+
+        [opportunity] = run([event], PARTNERS_PATH)
+
+        assert opportunity.region == "East County"
+
+    def test_unmatched_record_gets_empty_specific_attention_and_region(self):
+        """Regression check: a record matching neither keyword set exports
+        specific_attention=[] and region="", unchanged from today's stub
+        behavior."""
+        event = _event(title="Farm Tour", location="A venue with no known city")
+
+        [opportunity] = run([event], PARTNERS_PATH)
+
+        assert opportunity.specific_attention == []
+        assert opportunity.region == ""
+
+    def test_region_is_not_part_of_the_site_schema_serialization(self):
+        from partner_scrape.export.writer import SITE_SCHEMA_FIELDS, to_json_dict
+
+        event = _event(title="Farm Tour", location="Chula Vista, CA")
+
+        [opportunity] = run([event], PARTNERS_PATH)
+
+        assert "region" not in SITE_SCHEMA_FIELDS
+        assert "region" not in to_json_dict(opportunity)
+
+
+class TestLLMClassificationOverride:
+    """`_to_opportunity` prefers an Event's own LLM-set classification
+    fields over taxonomy.py's keyword derivation, checked independently
+    per field via `field_provenance` (sprint 002 ticket 003)."""
+
+    def _event_with_taxonomy_fields(self, **llm_overrides) -> Event:
+        """A base Event whose text/cost/start would keyword-derive to
+        areas_of_interest=["Biology / LifeSciences"], age_grade_level=["Family"],
+        cost_range="Free", time_of_day=["Morning"] -- matching
+        TestTaxonomyDerivation's fixture above -- with any of
+        ``llm_overrides`` applied via `Event.set(...)` as if an
+        LLMEnricher had run.
+        """
+        event = _event(
+            source_id="crf",
+            title="Family Tide Pool Walk",
+            start=datetime(2026, 8, 1, 9, 0),
+            description="A morning tide pool exploration for the whole family",
+            cost="Free",
+        )
+        for field_name, value in llm_overrides.items():
+            event.set(field_name, value, source="llm_enrichment", confidence=0.9)
+        return event
+
+    def test_no_llm_fields_set_behaves_like_sprint_001_for_all_four_fields(self):
+        event = self._event_with_taxonomy_fields()
+        assert event.field_provenance.keys() & {
+            "areas_of_interest",
+            "age_grade_level",
+            "cost_range",
+            "time_of_day",
+        } == set()
+
+        [opportunity] = run([event], PARTNERS_PATH)
+
+        assert opportunity.areas_of_interest == ["Biology / LifeSciences"]
+        assert opportunity.age_grade_level == ["Family"]
+        assert opportunity.cost_range == "Free"
+        assert opportunity.time_of_day == ["Morning"]
+
+    def test_llm_set_areas_of_interest_overrides_keyword_derivation(self):
+        event = self._event_with_taxonomy_fields(areas_of_interest=["Engineering"])
+
+        [opportunity] = run([event], PARTNERS_PATH)
+
+        assert opportunity.areas_of_interest == ["Engineering"]
+        # The other three fields were not LLM-set on this Event, so they
+        # still fall back to keyword derivation independently.
+        assert opportunity.age_grade_level == ["Family"]
+        assert opportunity.cost_range == "Free"
+        assert opportunity.time_of_day == ["Morning"]
+
+    def test_llm_set_age_grade_level_overrides_keyword_derivation(self):
+        event = self._event_with_taxonomy_fields(age_grade_level=["Grades 9-12"])
+
+        [opportunity] = run([event], PARTNERS_PATH)
+
+        assert opportunity.age_grade_level == ["Grades 9-12"]
+        assert opportunity.areas_of_interest == ["Biology / LifeSciences"]
+
+    def test_llm_set_cost_range_overrides_keyword_derivation(self):
+        event = self._event_with_taxonomy_fields(cost_range="Less than $25")
+
+        [opportunity] = run([event], PARTNERS_PATH)
+
+        assert opportunity.cost_range == "Less than $25"
+        assert opportunity.areas_of_interest == ["Biology / LifeSciences"]
+
+    def test_llm_set_time_of_day_overrides_keyword_derivation(self):
+        event = self._event_with_taxonomy_fields(time_of_day=["Evening"])
+
+        [opportunity] = run([event], PARTNERS_PATH)
+
+        assert opportunity.time_of_day == ["Evening"]
+        assert opportunity.areas_of_interest == ["Biology / LifeSciences"]
+
+    def test_mixed_some_llm_set_some_unset_on_the_same_event(self):
+        event = self._event_with_taxonomy_fields(
+            cost_range="Less than $100", time_of_day=["Evening"]
+        )
+
+        [opportunity] = run([event], PARTNERS_PATH)
+
+        assert opportunity.cost_range == "Less than $100"
+        assert opportunity.time_of_day == ["Evening"]
+        # areas_of_interest and age_grade_level were left unset on this
+        # Event, so each independently falls back to its keyword value.
+        assert opportunity.areas_of_interest == ["Biology / LifeSciences"]
+        assert opportunity.age_grade_level == ["Family"]
+
+
+class TestOpportunityTypeLLMOverride:
+    """`_to_opportunity` prefers an Event's own LLM/fallback-set
+    `opportunity_type` (sprint 009, issue 13) over `taxonomy.py`'s
+    keyword derivation, via the same field_provenance-presence
+    precedence pattern the other four classification fields already use."""
+
+    def test_no_opportunity_type_set_falls_back_to_keyword_classification(self):
+        event = _event(title="Farm Tour", start=datetime(2026, 8, 1, 9, 0))
+        assert "opportunity_type" not in event.field_provenance
+
+        [opportunity] = run([event], PARTNERS_PATH)
+
+        assert opportunity.opportunity_type == DEFAULT_OPPORTUNITY_TYPE
+
+    def test_llm_set_opportunity_type_overrides_keyword_derivation(self):
+        # "Farm Tour" keyword-classifies to the default bucket; an
+        # LLM/fallback-set value (field_provenance present) must win.
+        event = _event(title="Farm Tour", start=datetime(2026, 8, 1, 9, 0))
+        event.set("opportunity_type", "Funding Opportunities", source="llm_enrichment", confidence=0.7)
+
+        [opportunity] = run([event], PARTNERS_PATH)
+
+        assert opportunity.opportunity_type == "Funding Opportunities"
+
+    def test_taxonomy_fallback_set_opportunity_type_also_wins(self):
+        """The precedence check is field_provenance *presence*, not which
+        source set it -- a taxonomy_fallback-sourced value (enrich/'s
+        fail-open path) counts too, same as it does for the other three
+        LLM-classification fields."""
+        event = _event(title="Farm Tour", start=datetime(2026, 8, 1, 9, 0))
+        event.set("opportunity_type", "Volunteering", source="taxonomy_fallback", confidence=0.3)
+
+        [opportunity] = run([event], PARTNERS_PATH)
+
+        assert opportunity.opportunity_type == "Volunteering"
+
+    def test_internship_stays_work_based_learning_even_with_opportunity_type_set(self):
+        """Internships are forced to WORK_BASED_LEARNING_TYPE by `kind`,
+        checked before the field_provenance precedence logic -- an
+        Event.set() opportunity_type value must not leak through."""
+        event = _event(
+            title="Data Science Intern",
+            start=datetime(2026, 8, 1, 9, 0),
+            kind="internship",
+            external_id="gh-99",
+        )
+        event.set("opportunity_type", "Online", source="llm_enrichment", confidence=0.7)
+
+        [opportunity] = run([event], PARTNERS_PATH)
+
+        assert opportunity.opportunity_type == WORK_BASED_LEARNING_TYPE
+
+
+class TestOpportunityTypeTitleOnlyRegression:
+    """Regression (issue 13's known false-positive): a title like "Bird
+    Walk at Grant Park" must not classify as "Funding Opportunities" --
+    neither via the keyword fallback (OPPORTUNITY_TYPE_KEYWORDS has no
+    such rule, deliberately) nor via field_provenance-precedence somehow
+    picking up an unset LLM value."""
+
+    def test_bird_walk_title_does_not_classify_as_funding_opportunities(self):
+        event = _event(title="Bird Walk at Grant Park", start=datetime(2026, 8, 1, 9, 0))
+
+        [opportunity] = run([event], PARTNERS_PATH)
+
+        assert opportunity.opportunity_type != "Funding Opportunities"
+        assert opportunity.opportunity_type == DEFAULT_OPPORTUNITY_TYPE
+
+
+class TestPartnerJoin:
+    def test_matching_org_gets_partner_id_logo_and_geo_populated(self):
+        event = _event(source_id="crf", start=datetime(2026, 8, 1, 9, 0))
+
+        [opportunity] = run(
+            [event], PARTNERS_PATH, source_org_names={"crf": "Coastal Roots Farm"}
+        )
+
+        assert opportunity.partner_id == 101
+        assert opportunity.partner_name == "Coastal Roots Farm"
+        assert opportunity.logo_src == "coastal_roots_farm.jpg"
+        assert opportunity.latitude == "33.05"
+        assert opportunity.longitude == "-117.26"
+
+    def test_unmatched_org_still_produces_a_valid_opportunity_with_partner_id_unset(self):
+        event = _event(source_id="unknown_org", start=datetime(2026, 8, 1, 9, 0))
+
+        [opportunity] = run(
+            [event], PARTNERS_PATH, source_org_names={"unknown_org": "Some Org Not Listed"}
+        )
+
+        assert isinstance(opportunity, Opportunity)
+        assert opportunity.partner_id is None
+        assert opportunity.partner_name == "Some Org Not Listed"
+
+    def test_missing_source_org_names_entry_falls_back_to_source_id(self):
+        event = _event(source_id="no_mapping_provided", start=datetime(2026, 8, 1, 9, 0))
+
+        [opportunity] = run([event], PARTNERS_PATH)
+
+        assert opportunity.partner_id is None
+        assert opportunity.partner_name == "no_mapping_provided"
+
+
+class TestCrossSourceDedup:
+    def test_two_sources_with_matching_title_date_venue_collapse_to_one_opportunity(self):
+        a = _event(
+            source_id="tec_source",
+            title="Tide Pool Exploration",
+            start=datetime(2026, 8, 15, 9, 0),
+            location="Cabrillo Tide Pools",
+            confidence=1.0,
+            description="Full accurate TEC description",
+        )
+        b = _event(
+            source_id="wp_source",
+            title="Tide Pool Exploration",
+            start=datetime(2026, 8, 15, 9, 0),
+            location="Cabrillo Tide Pools",
+            confidence=0.5,
+            description="Vague WP blurb",
+        )
+
+        opportunities = run([a, b], PARTNERS_PATH)
+
+        assert len(opportunities) == 1
+        assert opportunities[0].description == "Full accurate TEC description"
+        assert opportunities[0].sources == frozenset({"tec_source", "wp_source"})
+
+    def test_differing_date_or_venue_is_not_collapsed(self):
+        a = _event(
+            source_id="tec_source",
+            title="Tide Pool Exploration",
+            start=datetime(2026, 8, 15, 9, 0),
+            location="Cabrillo Tide Pools",
+        )
+        b = _event(
+            source_id="wp_source",
+            title="Tide Pool Exploration",
+            start=datetime(2026, 8, 16, 9, 0),
+            location="Cabrillo Tide Pools",
+        )
+
+        opportunities = run([a, b], PARTNERS_PATH)
+
+        assert len(opportunities) == 2
+
+
+class TestRecurringCollapse:
+    def test_n_recurring_instances_collapse_with_repeats_text(self):
+        events = [
+            _event(source_id="crf", title="Farm Camp", start=datetime(2026, 8, 1, 9, 0)),
+            _event(source_id="crf", title="Farm Camp", start=datetime(2026, 8, 8, 9, 0)),
+            _event(source_id="crf", title="Farm Camp", start=datetime(2026, 8, 15, 9, 0)),
+        ]
+
+        opportunities = run(events, PARTNERS_PATH)
+
+        assert len(opportunities) == 1
+        assert "Repeats 3 times through 2026-08-15" in opportunities[0].availability
+
+    def test_a_single_non_recurring_event_has_no_repeats_text(self):
+        event = _event(start=datetime(2026, 8, 1, 9, 0))
+
+        [opportunity] = run([event], PARTNERS_PATH)
+
+        assert opportunity.availability == ""
+
+
+class TestInternshipCollapseDedupBypass:
+    """`kind="internship"` Events are routed around both
+    `collapse_recurring` and `dedup_cross_source` (sprint.md Design
+    Rationale: "kind='internship' Events bypass both..."), since neither
+    stage's identity assumption holds for distinct job requisitions."""
+
+    def test_same_title_same_source_distinct_external_id_both_survive(self):
+        """Would collapse under `collapse_recurring`'s `(source_id,
+        normalized title)` grouping if internships were not bypassed."""
+        a = _event(
+            source_id="acme",
+            title="Software Engineering Intern",
+            start=datetime(2026, 8, 1, 9, 0),
+            kind="internship",
+            external_id="gh-1001",
+        )
+        b = _event(
+            source_id="acme",
+            title="Software Engineering Intern",
+            start=datetime(2026, 8, 1, 9, 0),
+            kind="internship",
+            external_id="gh-1002",
+        )
+
+        opportunities = run([a, b], PARTNERS_PATH)
+
+        assert len(opportunities) == 2
+        assert all(o.opportunity_type == WORK_BASED_LEARNING_TYPE for o in opportunities)
+
+    def test_same_title_same_date_same_location_different_source_both_survive(self):
+        """Would merge under `dedup_cross_source`'s `(title, date, venue)`
+        identity if internships were not bypassed."""
+        a = _event(
+            source_id="acme",
+            title="Software Engineering Intern",
+            start=datetime(2026, 8, 1, 9, 0),
+            location="San Diego, CA",
+            kind="internship",
+            external_id="gh-1001",
+        )
+        b = _event(
+            source_id="widgetco",
+            title="Software Engineering Intern",
+            start=datetime(2026, 8, 1, 9, 0),
+            location="San Diego, CA",
+            kind="internship",
+            external_id="lever-9",
+        )
+
+        opportunities = run([a, b], PARTNERS_PATH)
+
+        assert len(opportunities) == 2
+
+    def test_internship_never_shows_repeats_text(self):
+        event = _event(
+            source_id="acme",
+            title="Software Engineering Intern",
+            start=datetime(2026, 8, 1, 9, 0),
+            kind="internship",
+            external_id="gh-1001",
+        )
+
+        [opportunity] = run([event], PARTNERS_PATH)
+
+        assert "Repeats" not in opportunity.availability
+
+    def test_non_internship_collapse_and_dedup_still_apply_unchanged(self):
+        """Guards against a broken partition that accidentally routes
+        ordinary events around collapse/dedup too."""
+        recurring = [
+            _event(source_id="crf", title="Farm Camp", start=datetime(2026, 8, 1, 9, 0)),
+            _event(source_id="crf", title="Farm Camp", start=datetime(2026, 8, 8, 9, 0)),
+        ]
+        internship = _event(
+            source_id="acme",
+            title="Software Engineering Intern",
+            start=datetime(2026, 8, 1, 9, 0),
+            kind="internship",
+            external_id="gh-1001",
+        )
+
+        opportunities = run(recurring + [internship], PARTNERS_PATH)
+
+        assert len(opportunities) == 2
+        by_title = {o.title: o for o in opportunities}
+        assert "Repeats 2 times" in by_title["Farm Camp"].availability
+        assert by_title["Software Engineering Intern"].opportunity_type == WORK_BASED_LEARNING_TYPE
+
+
+class TestInternshipOpportunityType:
+    def test_internship_kind_maps_to_work_based_learning(self):
+        event = _event(
+            title="Data Science Intern",
+            start=datetime(2026, 8, 1, 9, 0),
+            kind="internship",
+            external_id="gh-42",
+        )
+
+        [opportunity] = run([event], PARTNERS_PATH)
+
+        assert opportunity.opportunity_type == WORK_BASED_LEARNING_TYPE
+
+    def test_event_kind_keeps_default_opportunity_type_unchanged(self):
+        event = _event(title="Farm Tour", start=datetime(2026, 8, 1, 9, 0))
+
+        [opportunity] = run([event], PARTNERS_PATH)
+
+        assert opportunity.opportunity_type == DEFAULT_OPPORTUNITY_TYPE
+
+
+class TestInternshipDateAndAvailability:
+    def test_known_deadline_sets_iso_date_end_and_apply_by_text(self):
+        event = _event(
+            title="Biology Research Intern",
+            start=datetime(2026, 8, 1, 9, 0),
+            end=datetime(2026, 9, 15, 0, 0),
+            kind="internship",
+            external_id="gh-7",
+        )
+
+        [opportunity] = run([event], PARTNERS_PATH)
+
+        assert opportunity.date_end.startswith("2026-09-15")
+        assert opportunity.availability == "Apply by 2026-09-15"
+
+    def test_no_deadline_leaves_date_end_blank_and_reads_rolling(self):
+        event = _event(
+            title="Biology Research Intern",
+            start=datetime(2026, 8, 1, 9, 0),
+            kind="internship",
+            external_id="gh-8",
+        )
+
+        [opportunity] = run([event], PARTNERS_PATH)
+
+        assert opportunity.date_end == ""
+        assert opportunity.availability == "Rolling — apply anytime"
+
+
+class TestDeadlineFirstAvailabilityGeneralization:
+    """`DEADLINE_FIRST_TYPES` (sprint 015 ticket 007) generalizes
+    `_internship_availability`'s "Apply by <date>" / "Rolling -- apply
+    anytime" text to any `opportunity_type in DEADLINE_FIRST_TYPES`, not
+    only `kind == "internship"` -- mirrors
+    `TestInternshipDateAndAvailability`'s two cases exactly for a
+    non-internship, LLM-set `opportunity_type="Competitions"` event."""
+
+    def test_competitions_known_deadline_sets_iso_date_end_and_apply_by_text(self):
+        event = _event(
+            title="Regional Robotics Championship",
+            start=datetime(2026, 3, 1, 9, 0),
+            end=datetime(2026, 9, 15, 0, 0),
+        )
+        event.set("opportunity_type", "Competitions", source="llm_enrichment", confidence=0.9)
+
+        [opportunity] = run([event], PARTNERS_PATH)
+
+        assert opportunity.opportunity_type == "Competitions"
+        assert opportunity.date_end.startswith("2026-09-15")
+        assert opportunity.availability == "Apply by 2026-09-15"
+
+    def test_competitions_no_deadline_leaves_date_end_blank_and_reads_rolling(self):
+        event = _event(
+            title="Regional Robotics Championship",
+            start=datetime(2026, 3, 1, 9, 0),
+        )
+        event.set("opportunity_type", "Competitions", source="llm_enrichment", confidence=0.9)
+
+        [opportunity] = run([event], PARTNERS_PATH)
+
+        assert opportunity.opportunity_type == "Competitions"
+        assert opportunity.date_end == ""
+        assert opportunity.availability == "Rolling — apply anytime"
+
+
+class TestInternshipCostRange:
+    def test_cost_range_stays_blank_when_event_never_set_cost(self):
+        """This ticket must not introduce a forced 'Free' (or any other)
+        default cost_range for internships (sprint.md Architecture
+        self-review note) -- a missing cost signal must stay blank."""
+        event = _event(
+            title="Data Science Intern",
+            start=datetime(2026, 8, 1, 9, 0),
+            kind="internship",
+            external_id="gh-9",
+        )
+
+        [opportunity] = run([event], PARTNERS_PATH)
+
+        assert opportunity.cost_range == ""
+
+    def test_cost_range_is_honored_when_the_event_explicitly_set_it(self):
+        event = _event(
+            title="Data Science Intern",
+            start=datetime(2026, 8, 1, 9, 0),
+            kind="internship",
+            external_id="gh-10",
+            cost="Free",
+        )
+
+        [opportunity] = run([event], PARTNERS_PATH)
+
+        assert opportunity.cost_range == "Free"
+
+
+# ---------------------------------------------------------------------
+# AC (sprint 027, SUC-033/SUC-034): kind="program" Events get exactly
+# the same curated-record bypass and deadline-first availability
+# treatment `kind="internship"` already has, via the new
+# `PROGRAM_EXTRACTION_KINDS` shared constant. Mirrors
+# TestInternshipCollapseDedupBypass/TestInternshipDateAndAvailability
+# above with a `kind="program"` fixture in place of `"internship"`.
+# ---------------------------------------------------------------------
+
+
+class TestProgramCollapseDedupBypass:
+    def test_same_title_same_date_different_source_both_survive(self):
+        """Would merge under `dedup_cross_source`'s `(title, date, venue)`
+        identity if `kind="program"` Events were not bypassed."""
+        a = _event(
+            source_id="salk",
+            title="Summer Research Internship",
+            start=datetime(2026, 8, 1, 9, 0),
+            location="La Jolla, CA",
+            kind="program",
+            external_id="salk-2027",
+        )
+        b = _event(
+            source_id="sdsc_rehs",
+            title="Summer Research Internship",
+            start=datetime(2026, 8, 1, 9, 0),
+            location="La Jolla, CA",
+            kind="program",
+            external_id="sdsc-2027",
+        )
+
+        opportunities = run([a, b], PARTNERS_PATH)
+
+        assert len(opportunities) == 2
+
+    def test_program_never_shows_repeats_text(self):
+        event = _event(
+            source_id="salk",
+            title="Summer Research Internship",
+            start=datetime(2026, 8, 1, 9, 0),
+            kind="program",
+            external_id="salk-2027",
+        )
+
+        [opportunity] = run([event], PARTNERS_PATH)
+
+        assert "Repeats" not in opportunity.availability
+
+
+class TestProgramDateAndAvailability:
+    def test_known_deadline_sets_iso_date_end_and_apply_by_text(self):
+        event = _event(
+            title="Summer Research Internship",
+            start=datetime(2026, 8, 1, 9, 0),
+            end=datetime(2026, 9, 15, 0, 0),
+            kind="program",
+            external_id="salk-2027",
+        )
+
+        [opportunity] = run([event], PARTNERS_PATH)
+
+        assert opportunity.date_end.startswith("2026-09-15")
+        assert opportunity.availability == "Apply by 2026-09-15"
+
+    def test_future_start_and_no_end_reads_opens_tilde_date(self):
+        """(Sprint 027, issue 28 item 4) `event.start` in the future with
+        no/future `end` produces "Opens ~<date>" instead of "Apply by
+        <date>"/"Rolling -- apply anytime"."""
+        event = _event(
+            title="Summer Research Internship",
+            start=datetime(2027, 1, 15, 9, 0),
+            kind="program",
+            external_id="salk-2028",
+        )
+
+        [opportunity] = run([event], PARTNERS_PATH, today=date(2026, 9, 1))
+
+        assert opportunity.availability == "Opens ~2027-01-15"
+
+    def test_future_start_and_future_end_reads_opens_tilde_date(self):
+        """The "not yet open" branch is checked first, before the
+        "Apply by <date>" branch -- a future `end` doesn't take
+        precedence over a future `start`."""
+        event = _event(
+            title="Summer Research Internship",
+            start=datetime(2027, 1, 15, 9, 0),
+            end=datetime(2027, 3, 1, 0, 0),
+            kind="program",
+            external_id="salk-2028",
+        )
+
+        [opportunity] = run([event], PARTNERS_PATH, today=date(2026, 9, 1))
+
+        assert opportunity.availability == "Opens ~2027-01-15"
+
+    def test_past_start_and_future_end_still_reads_apply_by_date_unchanged(self):
+        """A `start` already in the past (the ordinary, already-open
+        case) must not trip the new "Opens ~" branch -- the existing
+        "Apply by <date>" text is unchanged."""
+        event = _event(
+            title="Summer Research Internship",
+            start=datetime(2026, 8, 1, 9, 0),
+            end=datetime(2026, 12, 1, 0, 0),
+            kind="program",
+            external_id="salk-2027",
+        )
+
+        [opportunity] = run([event], PARTNERS_PATH, today=date(2026, 9, 1))
+
+        assert opportunity.availability == "Apply by 2026-12-01"
+
+    def test_internship_kind_also_gets_opens_tilde_date(self):
+        """The new "Opens ~" branch is not program-specific -- it applies
+        to every `PROGRAM_EXTRACTION_KINDS` member, including the
+        pre-existing `kind="internship"`."""
+        event = _event(
+            title="Software Engineering Intern",
+            start=datetime(2027, 1, 15, 9, 0),
+            kind="internship",
+            external_id="gh-11",
+        )
+
+        [opportunity] = run([event], PARTNERS_PATH, today=date(2026, 9, 1))
+
+        assert opportunity.availability == "Opens ~2027-01-15"
+
+
+class TestProgramEligibilityEventLevelOverride:
+    """(Sprint 027) `_to_opportunity()`'s `eligibility` resolution now
+    checks `Event.field_provenance` before falling back to
+    `source_taxonomy_defaults` -- the same field_provenance-presence
+    precedence pattern already used for `areas_of_interest`/
+    `age_grade_level`/`cost_range`/`time_of_day`/`opportunity_type`."""
+
+    def test_event_level_eligibility_wins_over_source_taxonomy_defaults(self):
+        event = _event(
+            source_id="sio_listing",
+            title="SIO Research Internship: Marine Biology",
+            start=datetime(2026, 8, 1, 9, 0),
+            kind="program",
+            external_id="sio-marine-bio",
+        )
+        event.set(
+            "eligibility",
+            "Open to rising 11th and 12th graders only",
+            source="program_llm_extraction",
+            confidence=0.9,
+        )
+
+        [opportunity] = run(
+            [event],
+            PARTNERS_PATH,
+            source_taxonomy_defaults={
+                "sio_listing": {"eligibility": "Source-level default, should not win"}
+            },
+        )
+
+        assert opportunity.eligibility == "Open to rising 11th and 12th graders only"
+
+    def test_no_field_provenance_eligibility_falls_back_to_taxonomy_defaults_unchanged(self):
+        """No regression for the sprint-015 mechanism: an Event that
+        never calls `Event.set("eligibility", ...)` still resolves from
+        `source_taxonomy_defaults` exactly as before this ticket."""
+        event = _event(
+            source_id="northrop_hip",
+            title="High School Internship Program",
+            start=datetime(2026, 8, 1, 9, 0),
+            kind="program",
+            external_id="hip-2027",
+        )
+
+        [opportunity] = run(
+            [event],
+            PARTNERS_PATH,
+            source_taxonomy_defaults={
+                "northrop_hip": {"eligibility": "Open only to Northrop HIP partner high schools"}
+            },
+        )
+
+        assert opportunity.eligibility == "Open only to Northrop HIP partner high schools"
+
+
+class TestMixedDatetimeAwareness:
+    """Regression: adapters emit a mix of naive (TEC/iCal) and tz-aware
+    (BiblioCommons/Lever) datetimes; run() must not crash comparing them."""
+
+    def test_naive_and_aware_starts_do_not_crash_collapse(self):
+        from datetime import timezone
+
+        naive = _event(source_id="tec_src", title="Tide Pools",
+                       start=datetime(2099, 8, 15, 10, 0))
+        aware = _event(source_id="lib_src", title="Story Time",
+                       start=datetime(2099, 8, 16, 10, 0, tzinfo=timezone.utc))
+
+        opps = run([naive, aware], PARTNERS_PATH)
+
+        # Both survive, and every emitted date_start is naive-ISO (no offset).
+        assert len(opps) == 2
+        assert all("+" not in o.date_start and "Z" not in o.date_start for o in opps)
+
+
+class TestDSTAwareExportOffset:
+    """`_iso()` resolves each naive datetime's UTC offset from
+    `zoneinfo.ZoneInfo("America/Los_Angeles")` at serialization time
+    (sprint 012, issue 19) instead of a hard-coded `-07:00` constant, so
+    the offset falls out of which side of the DST boundary the date
+    lands on. See `normalize/run.py::_iso`'s docstring for the fold
+    convention governing the two DST-transition edge cases below.
+    """
+
+    def test_july_date_serializes_with_daylight_time_offset(self):
+        event = _event(start=datetime(2026, 7, 15, 9, 0))
+
+        [opportunity] = run([event], PARTNERS_PATH)
+
+        assert opportunity.date_start == "2026-07-15T09:00:00-07:00"
+
+    def test_january_date_serializes_with_standard_time_offset(self):
+        event = _event(start=datetime(2026, 1, 15, 9, 0))
+
+        [opportunity] = run([event], PARTNERS_PATH)
+
+        assert opportunity.date_start == "2026-01-15T09:00:00-08:00"
+
+    def test_already_aware_datetime_offset_is_left_untouched(self):
+        """Regression: an Event whose start/end already carries `tzinfo`
+        (as `run()` coerces to naive before this point in the normal
+        pipeline, but `_iso` itself must still honor an aware value
+        exactly as before) is serialized with its own offset, not
+        relocalized into `_SITE_TZ`."""
+        from datetime import timezone
+
+        from partner_scrape.normalize.run import _iso
+
+        aware = datetime(2026, 7, 15, 9, 0, tzinfo=timezone.utc)
+
+        assert _iso(aware) == aware.isoformat()
+        assert _iso(aware) == "2026-07-15T09:00:00+00:00"
+
+    def test_november_fall_back_ambiguous_hour_resolves_to_daylight_time(self):
+        """2026's fall-back transition is 2026-11-01: the local clock
+        repeats 1:00-2:00am. The documented fold=0 (default) convention
+        resolves this to the earlier, pre-transition Daylight Time
+        occurrence."""
+        event = _event(start=datetime(2026, 11, 1, 1, 30, 0))
+
+        [opportunity] = run([event], PARTNERS_PATH)
+
+        assert opportunity.date_start == "2026-11-01T01:30:00-07:00"
+
+    def test_march_spring_forward_nonexistent_hour_resolves_to_standard_time(self):
+        """2026's spring-forward transition is 2026-03-08: the local
+        clock skips 2:00-3:00am entirely. The documented fold=0
+        (default) convention resolves this nonexistent local time to
+        `zoneinfo`'s own pre-transition-offset convention, i.e. Standard
+        Time."""
+        event = _event(start=datetime(2026, 3, 8, 2, 30, 0))
+
+        [opportunity] = run([event], PARTNERS_PATH)
+
+        assert opportunity.date_start == "2026-03-08T02:30:00-08:00"
+
+
+class TestEventImageResolution:
+    """`run()`'s `image_resolver` DI seam (sprint 008 ticket 008, issue
+    19): a plain injected callable, never an import of
+    `export.images.EventImageDownloader` -- see `normalize.run`'s own
+    comment on why `normalize` stays free of any dependency on `export`.
+    These tests inject a fake resolver rather than a real
+    `EventImageDownloader`, so this file (like every other normalize
+    test) makes no network call and touches no disk -- the Downloader's
+    own fetch/validate/quality-gate/dedupe logic is covered by
+    `tests/test_export_images.py`.
+    """
+
+    def test_no_resolver_given_leaves_image_src_empty_even_with_a_real_image_url(self):
+        event = _event(
+            start=datetime(2026, 8, 1, 9, 0),
+            image_url="https://example.org/event.jpg",
+        )
+
+        [opportunity] = run([event], PARTNERS_PATH)
+
+        assert opportunity.image_src == ""
+
+    def test_resolver_is_called_with_the_event_image_url_and_its_return_value_is_used(self):
+        calls: list[str] = []
+
+        def fake_resolver(image_url: str) -> str:
+            calls.append(image_url)
+            return "deadbeefcafef00d.jpg"
+
+        event = _event(
+            start=datetime(2026, 8, 1, 9, 0),
+            image_url="https://example.org/event.jpg",
+        )
+
+        [opportunity] = run([event], PARTNERS_PATH, image_resolver=fake_resolver)
+
+        assert calls == ["https://example.org/event.jpg"]
+        assert opportunity.image_src == "deadbeefcafef00d.jpg"
+
+    def test_resolver_rejecting_an_image_leaves_image_src_empty_without_raising(self):
+        """SUC-008's Alternate Flow: a resolver that rejects (returns
+        `""`, mirroring `EventImageDownloader.download`'s own contract
+        for a failed/unreachable/quality-gated-out image) never fails
+        the export."""
+        event = _event(
+            start=datetime(2026, 8, 1, 9, 0),
+            image_url="https://example.org/tracking-pixel.gif",
+        )
+
+        [opportunity] = run([event], PARTNERS_PATH, image_resolver=lambda _url: "")
+
+        assert opportunity.image_src == ""
+
+    def test_resolver_is_not_called_when_the_event_has_no_image_url(self):
+        calls: list[str] = []
+
+        def fake_resolver(image_url: str) -> str:
+            calls.append(image_url)
+            return "should-not-be-used.jpg"
+
+        event = _event(start=datetime(2026, 8, 1, 9, 0))  # image_url left blank
+
+        [opportunity] = run([event], PARTNERS_PATH, image_resolver=fake_resolver)
+
+        assert calls == []
+        assert opportunity.image_src == ""
+
+
+class TestEligibilityTaxonomyDefaults:
+    """Sprint 015 ticket 008, issue 27 item 3: `Opportunity.eligibility`,
+    sourced from `SourceConfig.taxonomy_defaults.eligibility` via the new
+    `source_taxonomy_defaults` parameter -- the identical shape and
+    threading mechanism `source_org_names` already established, keyed by
+    the same `source_id`."""
+
+    def test_taxonomy_defaults_eligibility_reaches_opportunity_unchanged(self):
+        event = _event(source_id="northrop_hip", start=datetime(2026, 8, 1, 9, 0))
+
+        [opportunity] = run(
+            [event],
+            PARTNERS_PATH,
+            source_taxonomy_defaults={
+                "northrop_hip": {"eligibility": "Open only to Northrop HIP partner high schools"}
+            },
+        )
+
+        assert opportunity.eligibility == "Open only to Northrop HIP partner high schools"
+
+    def test_taxonomy_defaults_keyed_by_source_id_not_org_name(self):
+        """A `source_taxonomy_defaults` entry under a *different*
+        `source_id` than the event's own must not leak through -- proves
+        the lookup is genuinely keyed by `source_id`, not accidentally
+        matching on org name or falling through to the first entry."""
+        event = _event(source_id="scripps_reach", start=datetime(2026, 8, 1, 9, 0))
+
+        [opportunity] = run(
+            [event],
+            PARTNERS_PATH,
+            source_taxonomy_defaults={
+                "some_other_source": {"eligibility": "Should never be seen"}
+            },
+        )
+
+        assert opportunity.eligibility == ""
+
+    def test_no_eligibility_key_in_taxonomy_defaults_produces_empty_string(self):
+        """A source with a `taxonomy_defaults` entry that sets other keys
+        but not `eligibility` still gets `eligibility == ""` -- absence of
+        the specific key, not absence of the whole map."""
+        event = _event(source_id="some_source", start=datetime(2026, 8, 1, 9, 0))
+
+        [opportunity] = run(
+            [event],
+            PARTNERS_PATH,
+            source_taxonomy_defaults={"some_source": {"some_other_key": "value"}},
+        )
+
+        assert opportunity.eligibility == ""
+
+    def test_source_taxonomy_defaults_omitted_entirely_produces_empty_string(self):
+        """`run()` called without `source_taxonomy_defaults` at all (as
+        every pre-ticket-008 caller does, and as ~120 of today's sources
+        still will) -- no regression, `eligibility` stays `""`."""
+        event = _event(start=datetime(2026, 8, 1, 9, 0))
+
+        [opportunity] = run([event], PARTNERS_PATH)
+
+        assert opportunity.eligibility == ""
+
+    def test_source_taxonomy_defaults_missing_source_id_entry_produces_empty_string(self):
+        """`source_taxonomy_defaults` is passed but has no entry at all
+        for this event's `source_id` -- the same "map given, key absent"
+        fallback `source_org_names` already exercises."""
+        event = _event(source_id="unmapped_source", start=datetime(2026, 8, 1, 9, 0))
+
+        [opportunity] = run(
+            [event],
+            PARTNERS_PATH,
+            source_taxonomy_defaults={"a_different_source": {"eligibility": "Irrelevant"}},
+        )
+
+        assert opportunity.eligibility == ""

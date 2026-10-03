@@ -1,0 +1,382 @@
+"""Tests for partner_scrape.adapters.listing_html: the listing_html Adapter.
+
+Drives discover -> fetch -> extract end to end through ``adapters.run``,
+composing ticket 003's listing-page discovery fixture
+(tests/fixtures/listing/fleet_events_listing.html) with a synthesized
+Fleet-style detail-page fixture (tests/fixtures/html/fleet_style_*.html --
+no JSON-LD, no ``<time>`` tag, matching Fleet's confirmed real page shape)
+via a FixtureFetcher -- no test here opens a real network socket, per
+sprint.md's test strategy. Per-rung extraction correctness is
+test_extract_ladder.py's job and discover()'s own link-matching logic is
+test_discovery_listing.py's job -- this file is integration + registration
++ delegation only, matching test_adapters_generic_html.py's own scope note
+for its sibling adapter.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from pathlib import Path
+
+import pytest
+
+from partner_scrape.adapters import ADAPTERS, get_adapter, run
+from partner_scrape.adapters.base import EventRef, RawResponse
+from partner_scrape.adapters.listing_html import CONFIDENCE_DEFAULT_LOCATION, ListingHtmlAdapter
+from partner_scrape.fetch import DEFAULT_RATE_LIMIT_SECONDS
+from partner_scrape.fetch.fetcher import FetchResponse
+from partner_scrape.model import Provenance
+from partner_scrape.registry.schema import SourceConfig
+
+LISTING_FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures" / "listing"
+HTML_FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures" / "html"
+
+SITE_URL = "https://www.fleetscience.org"
+LISTING_URL = f"{SITE_URL}/events"
+
+#: The 10 distinct /events/{slug} URLs
+#: tests/fixtures/listing/fleet_events_listing.html contains -- ticket
+#: 003's own fixture, reused as-is per this ticket's Testing plan
+#: ("composing ticket 003's discovery fixtures").
+EVENT_URLS = [
+    f"{SITE_URL}/events/candlelight-concerts",
+    f"{SITE_URL}/events/sky-tonight",
+    f"{SITE_URL}/events/traveling-with-the-stars",
+    f"{SITE_URL}/events/dynamic-earth",
+    f"{SITE_URL}/events/whales-giants-of-the-deep",
+    f"{SITE_URL}/events/robot-revolution",
+    f"{SITE_URL}/events/wildest-weather-in-the-solar-system",
+    f"{SITE_URL}/events/national-park-adventure",
+    f"{SITE_URL}/events/perfect-little-planet",
+    f"{SITE_URL}/events/sea-lions-live",
+]
+
+
+def _read(path: Path) -> str:
+    return path.read_text()
+
+
+def _response(body: str, status: int = 200) -> FetchResponse:
+    return FetchResponse(url="", status=status, headers={}, body=body)
+
+
+@dataclass
+class FixtureFetcher:
+    """Fetcher test double -- returns canned FetchResponses, no socket.
+
+    A URL absent from ``responses`` raises ``KeyError`` -- a loud
+    failure if the adapter under test fetches something it shouldn't.
+    """
+
+    responses: dict[str, FetchResponse]
+    calls: list[str] = field(default_factory=list)
+    #: Every call's rate_limit_seconds/respect_robots, keyed by URL --
+    #: sprint 015 ticket 003's acquisition_kwargs() threading, recorded
+    #: separately from ``calls`` so existing ``calls == [...]``-style
+    #: assertions elsewhere in this file are unaffected.
+    policy_calls: dict[str, tuple[float, bool]] = field(default_factory=dict)
+
+    def get(
+        self,
+        url: str,
+        headers: dict[str, str] | None = None,
+        rate_limit_seconds: float = 1.0,
+        respect_robots: bool = True,
+    ) -> FetchResponse:
+        self.calls.append(url)
+        self.policy_calls[url] = (rate_limit_seconds, respect_robots)
+        return self.responses[url]
+
+
+def _source(acquisition_policy: dict | None = None, config: dict | None = None) -> SourceConfig:
+    return SourceConfig(
+        source_id="fleet-science-center",
+        org_name="Fleet Science Center",
+        adapter_type="listing_html",
+        config=config or {"site_url": SITE_URL, "listing_urls": ["/events"]},
+        acquisition_policy=acquisition_policy or {},
+    )
+
+
+class TestRegistration:
+    def test_listing_html_is_registered_in_adapters_table(self):
+        assert ADAPTERS["listing_html"] is ListingHtmlAdapter
+
+    def test_listing_html_resolves_via_get_adapter(self):
+        assert isinstance(get_adapter("listing_html"), ListingHtmlAdapter)
+
+
+class TestDiscoverDelegatesToListingDiscovery:
+    def test_discover_returns_one_ref_per_matched_listing_link(self):
+        fetcher = FixtureFetcher(
+            {LISTING_URL: _response(_read(LISTING_FIXTURES_DIR / "fleet_events_listing.html"))}
+        )
+        adapter = ListingHtmlAdapter()
+
+        refs = list(adapter.discover(_source(), fetcher))
+
+        assert [r.url for r in refs] == EVENT_URLS
+
+    def test_discover_has_no_matching_logic_of_its_own(self, monkeypatch):
+        """``discover()`` must delegate entirely to
+        ``discovery.listing.discover_via_listing`` -- proven here by
+        substituting a fake and checking the adapter passes its
+        arguments through and returns its result verbatim, with no
+        transformation in between.
+        """
+        sentinel_refs = [EventRef(url="https://www.fleetscience.org/events/sentinel")]
+        captured: dict[str, object] = {}
+
+        def fake_discover_via_listing(source, fetcher):
+            captured["source"] = source
+            captured["fetcher"] = fetcher
+            return sentinel_refs
+
+        monkeypatch.setattr(
+            "partner_scrape.discovery.listing.discover_via_listing",
+            fake_discover_via_listing,
+        )
+
+        adapter = ListingHtmlAdapter()
+        source = _source()
+        fetcher = FixtureFetcher({})
+
+        refs = adapter.discover(source, fetcher)
+
+        assert refs is sentinel_refs
+        assert captured["source"] is source
+        assert captured["fetcher"] is fetcher
+
+
+class TestEndToEndDiscoverFetchExtract:
+    def test_run_produces_canonical_events_via_lower_ladder_rungs(self):
+        # Every discovered detail page is Fleet-style: no JSON-LD, no
+        # <time> tag (matching Fleet's confirmed real page shape), so
+        # only the OpenGraph rung fires here -- proves discover() and
+        # extract() are correctly wired together through adapters.run,
+        # reusing the unchanged extraction ladder.
+        opengraph_body = _read(HTML_FIXTURES_DIR / "fleet_style_opengraph.html")
+        responses = {
+            LISTING_URL: _response(
+                _read(LISTING_FIXTURES_DIR / "fleet_events_listing.html")
+            ),
+            **{url: _response(opengraph_body) for url in EVENT_URLS},
+        }
+        fetcher = FixtureFetcher(responses)
+
+        events = run(_source(), fetcher)
+
+        assert len(events) == 10
+        assert all(e.kind == "event" for e in events)
+        assert all(e.source_id == "fleet-science-center" for e in events)
+        assert {e.url for e in events} == set(EVENT_URLS)
+        assert all(e.title == "Candlelight Concerts" for e in events)
+
+        first = events[0]
+        assert first.field_provenance["title"] == Provenance(
+            source="listing_html", confidence=0.6
+        )
+        # No JSON-LD/<time> markup on the fixture page -- no date rung
+        # could fire, so the event is undated at extraction time (per
+        # sprint.md's Design Rationale: the LLM Enricher recovers this
+        # downstream, not this adapter).
+        assert first.start is None
+
+
+class TestAcquisitionPolicyThreading:
+    """Sprint 015 ticket 003: the source's acquisition_kwargs() must
+    reach both discovery.listing's own fetch (the listing page) and
+    this adapter's own fetch() (each detail page).
+    """
+
+    def test_sources_acquisition_policy_reaches_listing_and_detail_page_fetches(self):
+        opengraph_body = _read(HTML_FIXTURES_DIR / "fleet_style_opengraph.html")
+        responses = {
+            LISTING_URL: _response(
+                _read(LISTING_FIXTURES_DIR / "fleet_events_listing.html")
+            ),
+            **{url: _response(opengraph_body) for url in EVENT_URLS},
+        }
+        fetcher = FixtureFetcher(responses)
+        source = _source(acquisition_policy={"rate_limit_seconds": 3.0, "respect_robots": False})
+
+        run(source, fetcher)
+
+        assert fetcher.policy_calls[LISTING_URL] == (3.0, False)
+        assert fetcher.policy_calls[EVENT_URLS[0]] == (3.0, False)
+
+    def test_source_with_no_acquisition_policy_still_gets_polite_fetcher_defaults(self):
+        opengraph_body = _read(HTML_FIXTURES_DIR / "fleet_style_opengraph.html")
+        responses = {
+            LISTING_URL: _response(
+                _read(LISTING_FIXTURES_DIR / "fleet_events_listing.html")
+            ),
+            **{url: _response(opengraph_body) for url in EVENT_URLS},
+        }
+        fetcher = FixtureFetcher(responses)
+
+        run(_source(), fetcher)
+
+        assert fetcher.policy_calls[EVENT_URLS[0]] == (DEFAULT_RATE_LIMIT_SECONDS, True)
+
+
+class TestExtractPerRungFallback:
+    def test_opengraph_only_page_still_yields_an_event(self):
+        adapter = ListingHtmlAdapter()
+        raw = RawResponse(
+            ref=EventRef(url=f"{SITE_URL}/events/candlelight-concerts"),
+            status=200,
+            body=_read(HTML_FIXTURES_DIR / "fleet_style_opengraph.html"),
+        )
+
+        events = list(adapter.extract(raw, _source()))
+
+        assert len(events) == 1
+        event = events[0]
+        assert event.title == "Candlelight Concerts"
+        assert event.field_provenance["title"] == Provenance(
+            source="listing_html", confidence=0.6
+        )
+
+    def test_title_fallback_only_page_still_yields_an_event(self):
+        adapter = ListingHtmlAdapter()
+        raw = RawResponse(
+            ref=EventRef(url=f"{SITE_URL}/events/sky-tonight"),
+            status=200,
+            body=_read(HTML_FIXTURES_DIR / "fleet_style_title_fallback.html"),
+        )
+
+        events = list(adapter.extract(raw, _source()))
+
+        assert len(events) == 1
+        event = events[0]
+        assert event.title == "Sky Tonight"
+        assert event.field_provenance["title"] == Provenance(
+            source="listing_html", confidence=0.5
+        )
+
+
+class TestNoTitlePerRecordIsolation:
+    def test_page_with_no_usable_title_is_dropped_not_emitted_blank(self):
+        adapter = ListingHtmlAdapter()
+        raw = RawResponse(
+            ref=EventRef(url=f"{SITE_URL}/events/mystery"),
+            status=200,
+            body=_read(HTML_FIXTURES_DIR / "no_title.html"),
+        )
+
+        assert list(adapter.extract(raw, _source())) == []
+
+    def test_one_bad_page_does_not_fail_the_rest_of_the_source(self):
+        opengraph_body = _read(HTML_FIXTURES_DIR / "fleet_style_opengraph.html")
+        no_title_body = _read(HTML_FIXTURES_DIR / "no_title.html")
+        responses = {
+            LISTING_URL: _response(
+                _read(LISTING_FIXTURES_DIR / "fleet_events_listing.html")
+            ),
+            **{url: _response(opengraph_body) for url in EVENT_URLS},
+        }
+        responses[EVENT_URLS[0]] = _response(no_title_body)
+        fetcher = FixtureFetcher(responses)
+
+        events = run(_source(), fetcher)
+
+        assert len(events) == 9
+        assert EVENT_URLS[0] not in {e.url for e in events}
+
+
+class TestExtractRobustness:
+    def test_non_200_page_status_returns_no_events_without_raising(self):
+        adapter = ListingHtmlAdapter()
+        raw = RawResponse(
+            ref=EventRef(url=f"{SITE_URL}/events/x"), status=500, body=""
+        )
+
+        assert list(adapter.extract(raw, _source())) == []
+
+
+class TestDefaultLocationFallback:
+    """Sprint 015 ticket 004: ``source.config["default_location"]``
+    backstops ``Event.location`` only when the extraction ladder left it
+    empty -- see this ticket's Fix shape and ``adapters/DESIGN.md``'s
+    Sprint 015 addendum. Fleet's real detail pages carry no per-page
+    venue markup, so this closes the gap that blocked the Balboa Park
+    <-> Fleet cross-source dedup collapse measured in sprint 014 ticket
+    004's Notes.
+    """
+
+    def _source_with_default_location(self, default_location: str | None) -> SourceConfig:
+        config = {"site_url": SITE_URL, "listing_urls": ["/events"]}
+        if default_location is not None:
+            config["default_location"] = default_location
+        return _source(config=config)
+
+    def test_ladder_recovered_location_wins_over_default_location(self):
+        """A page whose JSON-LD carries a real ``location`` (the
+        json_ld_event.html fixture, reused as-is from
+        test_extract_ladder.py's own JSON-LD coverage) must keep that
+        value -- the fallback must never override a ladder-recovered
+        location, even when ``default_location`` is set to something
+        different.
+        """
+        adapter = ListingHtmlAdapter()
+        raw = RawResponse(
+            ref=EventRef(url=f"{SITE_URL}/events/tide-pools"),
+            status=200,
+            body=_read(HTML_FIXTURES_DIR / "json_ld_event.html"),
+        )
+        source = self._source_with_default_location("1875 El Prado, San Diego, CA 92101")
+
+        events = list(adapter.extract(raw, source))
+
+        assert len(events) == 1
+        event = events[0]
+        assert event.location != "1875 El Prado, San Diego, CA 92101"
+        assert "Cabrillo Tide Pools" in event.location
+        # Ladder provenance (JSON-LD, confidence 1.0) is preserved --
+        # the fallback branch never re-``set()``s an already-populated
+        # field.
+        assert event.field_provenance["location"].source == "listing_html"
+
+    def test_empty_ladder_location_falls_back_to_default_location(self):
+        """fleet_style_opengraph.html has no location signal anywhere
+        (matches Fleet's confirmed real page shape) -- with
+        ``default_location`` set, the adapter fills it in.
+        """
+        adapter = ListingHtmlAdapter()
+        raw = RawResponse(
+            ref=EventRef(url=f"{SITE_URL}/events/candlelight-concerts"),
+            status=200,
+            body=_read(HTML_FIXTURES_DIR / "fleet_style_opengraph.html"),
+        )
+        source = self._source_with_default_location("1875 El Prado, San Diego, CA 92101")
+
+        events = list(adapter.extract(raw, source))
+
+        assert len(events) == 1
+        event = events[0]
+        assert event.location == "1875 El Prado, San Diego, CA 92101"
+        assert event.field_provenance["location"] == Provenance(
+            source="listing_html", confidence=CONFIDENCE_DEFAULT_LOCATION
+        )
+
+    def test_no_default_location_configured_leaves_location_empty(self):
+        """A source with no ``default_location`` key (every listing_html
+        source but Fleet, this sprint) reproduces today's behavior
+        exactly: no ladder rung fired, no fallback configured, so
+        ``location`` stays empty with no field_provenance entry.
+        """
+        adapter = ListingHtmlAdapter()
+        raw = RawResponse(
+            ref=EventRef(url=f"{SITE_URL}/events/candlelight-concerts"),
+            status=200,
+            body=_read(HTML_FIXTURES_DIR / "fleet_style_opengraph.html"),
+        )
+        source = self._source_with_default_location(None)
+
+        events = list(adapter.extract(raw, source))
+
+        assert len(events) == 1
+        event = events[0]
+        assert event.location == ""
+        assert "location" not in event.field_provenance

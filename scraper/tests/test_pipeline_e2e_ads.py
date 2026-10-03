@@ -1,0 +1,223 @@
+"""Sprint 005 ticket 005: `pipeline.run()`'s new Ad Content Export call site.
+
+Proves `export_ads()` is really wired into `run()` -- not just declared
+-- over a real end-to-end call: the existing fixture-only Source Registry
+(`tests/fixtures/e2e_registry/`, reused unchanged from
+`test_pipeline_e2e.py`) plus a small fixture Ad Registry
+(`tests/fixtures/ad_registry/`, reused unchanged from
+`test_export_ads.py`), asserting a single `run()` call writes both
+`opportunities.json` and `ads.json` into the same `own_data_dir`
+(sprint 025 ticket 003 removed the `{site_dir}/src/data/...` write both
+functions used to make first), and that `dry_run=True` writes neither.
+
+No test here opens a socket, matching every other file in this suite's
+own convention -- `FixtureFetcher` raises for any URL it wasn't given a
+canned response for.
+"""
+
+from __future__ import annotations
+
+import json
+import shutil
+from dataclasses import dataclass, field
+from datetime import date
+from pathlib import Path
+
+import pytest
+
+from partner_scrape.export import ads, writer
+from partner_scrape.fetch.fetcher import FetchResponse
+from partner_scrape.pipeline import run
+
+FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
+E2E_REGISTRY_DIR = FIXTURES_DIR / "e2e_registry"
+AD_REGISTRY_DIR = FIXTURES_DIR / "ad_registry"
+PARTNERS_FIXTURE = FIXTURES_DIR / "partners.json"
+
+TODAY = date(2026, 7, 19)
+
+TEC_API_BASE = "https://coastalrootsfarm.example/wp-json/tribe/events/v1/events/"
+TEC_PROBE_URL = f"{TEC_API_BASE}?per_page=50&status=publish&start_date=now"
+TEC_PAGE1_URL = f"{TEC_API_BASE}?per_page=50&page=1&status=publish&start_date=now"
+ICAL_FEED_URL = "https://thelivingcoast.example/events/?ical=1"
+
+
+@pytest.fixture(autouse=True)
+def _scrape_cache_dir(tmp_path, monkeypatch):
+    """Point SCRAPE_CACHE_DIR at a tmp_path for every test in this file.
+
+    `pipeline.run()` unconditionally calls `export.partner_log.record()`
+    (sprint 009 ticket 003), whose default `log_dir` resolves via
+    `config.get_scrape_cache_store()` when a test doesn't pass one
+    explicitly -- matches `test_pipeline_e2e.py`'s identical fixture.
+    """
+    monkeypatch.setenv("SCRAPE_CACHE_DIR", str(tmp_path / "scrape_cache"))
+    return tmp_path
+
+
+@pytest.fixture(autouse=True)
+def _own_data_dir_default(tmp_path_factory, monkeypatch):
+    """Pin `writer.get_data_store()`'s (and, sprint 020 ticket 004,
+    `ads.get_data_store()`'s) resolution to a throwaway directory for
+    every test in this file (sprint 020 ticket 003).
+
+    `export_opportunities()`'s (and `export_ads()`'s) `own_data_dir`
+    parameter defaults to `config.get_data_store()` -- a real repo
+    path with no environment-variable override -- when a caller doesn't
+    pass one explicitly. `pipeline.run()` never passes it for either
+    call, so every real (non-`dry_run`) `run()` call in this file --
+    this file's whole point is proving `export_ads()` is wired into
+    `run()` -- would otherwise write real files into this repo's actual
+    `data/` directory on every test run. Mirrors this file's own
+    `_scrape_cache_dir` fixture and `tests/test_export.py`'s identical
+    `_own_data_dir_default` fixture, for the same underlying reason.
+    `writer` and `ads` each import `get_data_store` separately, so
+    both must be patched.
+
+    Returns `fake_own_data_dir` so tests can assert against the actual
+    (sole, since sprint 025 ticket 003) write target without duplicating
+    this fixture's own throwaway directory.
+    """
+    fake_own_data_dir = tmp_path_factory.mktemp("own-data-default")
+    monkeypatch.setenv("PARTNER_SCRAPE_DATA_DIR", str(fake_own_data_dir))
+    monkeypatch.setenv("PARTNER_SCRAPE_DATA_DIR", str(fake_own_data_dir))
+    return fake_own_data_dir
+
+
+class NoFixtureResponse(RuntimeError):
+    """Raised by FixtureFetcher for a URL with no canned response."""
+
+
+@dataclass
+class FixtureFetcher:
+    """Fetcher test double -- returns canned FetchResponses, no socket."""
+
+    responses: dict[str, FetchResponse]
+    calls: list[str] = field(default_factory=list)
+
+    def get(
+        self,
+        url: str,
+        headers: dict[str, str] | None = None,
+        rate_limit_seconds: float = 1.0,
+        respect_robots: bool = True,
+    ) -> FetchResponse:
+        self.calls.append(url)
+        if url not in self.responses:
+            raise NoFixtureResponse(f"no fixture response configured for {url!r}")
+        return self.responses[url]
+
+
+def _response(body: str, status: int = 200) -> FetchResponse:
+    return FetchResponse(url="", status=status, headers={}, body=body)
+
+
+def _fixture_fetcher() -> FixtureFetcher:
+    tec_body = (E2E_REGISTRY_DIR / "tec_events.json").read_text()
+    ical_body = (E2E_REGISTRY_DIR / "feed.ics").read_text()
+    return FixtureFetcher(
+        {
+            TEC_PROBE_URL: _response(tec_body),
+            TEC_PAGE1_URL: _response(tec_body),
+            ICAL_FEED_URL: _response(ical_body),
+            # brokensource.toml's URLs are deliberately absent.
+        }
+    )
+
+
+def _site_dir(tmp_path: Path) -> Path:
+    site_dir = tmp_path / "stem-ecosystem"
+    data_dir = site_dir / "src" / "data"
+    data_dir.mkdir(parents=True)
+    shutil.copy(PARTNERS_FIXTURE, data_dir / "partners.json")
+    return site_dir
+
+
+class TestAdsExportWiredIntoPipelineRun:
+    def test_a_single_run_produces_both_opportunities_json_and_ads_json(
+        self, tmp_path, _own_data_dir_default
+    ):
+        site_dir = _site_dir(tmp_path)
+        fetcher = _fixture_fetcher()
+
+        run(
+            registry_dir=E2E_REGISTRY_DIR,
+            site_dir=site_dir,
+            ads_dir=AD_REGISTRY_DIR,
+            fetcher=fetcher,
+            today=TODAY,
+        )
+
+        # Sprint 025 ticket 003: both functions' sole write target is now
+        # own_data_dir (this file's autouse fixture default) -- neither
+        # writes into {site_dir}/src/data/... any more.
+        opportunities_path = _own_data_dir_default / "opportunities.json"
+        ads_path = _own_data_dir_default / "ads.json"
+        assert opportunities_path.exists()
+        assert ads_path.exists()
+
+        written_ads = json.loads(ads_path.read_text())
+        headlines = {entry["headline"] for entry in written_ads}
+        assert {"Fixture Ad One", "Fixture Ad Two"} <= headlines
+        for entry in written_ads:
+            assert set(entry.keys()) == {"headline", "body", "link", "logo_src"}
+
+    def test_runs_own_opportunities_return_value_is_unaffected_by_the_ads_call(self, tmp_path):
+        # This ticket's Acceptance Criteria: "existing run() callers/
+        # tests that don't care about ads are unaffected (additive
+        # change)" -- run()'s return value is still exactly the
+        # opportunities payload, not e.g. a tuple including ads.
+        site_dir = _site_dir(tmp_path)
+        fetcher = _fixture_fetcher()
+
+        payload = run(
+            registry_dir=E2E_REGISTRY_DIR,
+            site_dir=site_dir,
+            ads_dir=AD_REGISTRY_DIR,
+            fetcher=fetcher,
+            today=TODAY,
+        )
+
+        assert isinstance(payload, list)
+        assert len(payload) == 2
+        assert all(isinstance(record, dict) for record in payload)
+        assert all("headline" not in record for record in payload)
+
+    def test_omitted_ads_dir_falls_back_to_the_real_seeded_league_registry(
+        self, tmp_path, _own_data_dir_default
+    ):
+        # No ads_dir override -- exercises the production default path
+        # (registry/ads/), proving the League's real seed content reaches
+        # a real run() call end to end.
+        site_dir = _site_dir(tmp_path)
+        fetcher = _fixture_fetcher()
+
+        run(
+            registry_dir=E2E_REGISTRY_DIR,
+            site_dir=site_dir,
+            fetcher=fetcher,
+            today=TODAY,
+        )
+
+        written_ads = json.loads((_own_data_dir_default / "ads.json").read_text())
+        assert len(written_ads) >= 1
+        assert written_ads[0]["link"].startswith("https://www.jointheleague.org")
+
+    def test_dry_run_writes_neither_opportunities_json_nor_ads_json(
+        self, tmp_path, _own_data_dir_default
+    ):
+        site_dir = _site_dir(tmp_path)
+        fetcher = _fixture_fetcher()
+
+        payload = run(
+            registry_dir=E2E_REGISTRY_DIR,
+            site_dir=site_dir,
+            ads_dir=AD_REGISTRY_DIR,
+            fetcher=fetcher,
+            today=TODAY,
+            dry_run=True,
+        )
+
+        assert len(payload) == 2
+        assert not (_own_data_dir_default / "opportunities.json").exists()
+        assert not (_own_data_dir_default / "ads.json").exists()

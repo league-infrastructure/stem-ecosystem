@@ -1,0 +1,423 @@
+"""Sitemap-diff discovery: resolves a source's sitemap into new/changed URLs.
+
+See ``sprint.md``'s Architecture > Sitemap Discovery, SUC-009, and sprint
+005's Architecture > Design Rationale (root-sitemap probing hardening,
+SUC-005). Fetches a source's root sitemap via the injected ``Fetcher`` --
+either ``SourceConfig.config["sitemap_url"]`` directly, when set, or by
+probing :data:`_ROOT_SITEMAP_FILENAMES` in order and accepting the first
+candidate whose body both returns HTTP 200 *and* parses as recognized
+sitemap XML (``<urlset>``/``<sitemapindex>``) -- a 200 response with a
+non-parseable or wrong-root-element body (e.g. some static-site
+generators serve a catch-all "not found" HTML page with status 200 for
+any path) is logged and skipped rather than accepted, falling through to
+the next candidate. It then identifies event/program-related URLs by
+sitemap child-filename pattern (recursing into a ``<sitemapindex>``) or
+by URL-path pattern for sites with no dedicated event sitemap, and diffs
+the resulting ``{url: lastmod}`` set against a persisted snapshot for
+``source.source_id`` under ``SCRAPE_CACHE_DIR`` -- only new or
+``<lastmod>``-changed URLs come back as ``EventRef``s, and the snapshot
+is rewritten to the current full state on every successful resolution.
+
+Classification patterns were originally ported, as a starting point and
+never a dependency, from a since-deleted early prototype's
+``EVENT_PATTERNS``/``PROGRAM_PATTERNS`` and inline event-path regex
+(``dev/inventory_sitemaps.py`` and ``dev/lib/sitemap_parser.py``, both
+long removed -- see git history).
+
+This module depends only on ``Fetch & Cache``'s ``Fetcher`` protocol,
+``Config``, ``registry.schema.SourceConfig``, and ``adapters.base.EventRef``
+(a plain, logic-free data shape shared by every adapter's ``discover()``,
+imported directly from ``adapters.base`` rather than the heavier
+``adapters`` package so no dispatch table or concrete adapter is pulled
+in) -- never the ``Adapter`` protocol or dispatch table itself. Ticket
+002's ``generic_html`` adapter calls into this module, never the other
+way around (sprint.md's dependency-direction check).
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+import re
+import xml.etree.ElementTree as ET
+
+from partner_scrape import config
+from partner_scrape.adapters.base import EventRef, acquisition_kwargs
+from partner_scrape.fetch import Fetcher
+from partner_scrape.registry.schema import SourceConfig
+from partner_scrape.storage import Store
+
+logger = logging.getLogger(__name__)
+
+#: XML namespace every standard sitemap uses (sitemaps.org protocol),
+#: matching the ``NS`` constant of a since-deleted early prototype
+#: (``dev/inventory_sitemaps.py`` -- see git history).
+_NS = {"sm": "http://www.sitemaps.org/schemas/sitemap/0.9"}
+
+#: Sitemap child-filename patterns for event content. Ported, as a
+#: starting point, from a since-deleted early prototype's
+#: ``EVENT_PATTERNS`` (``dev/inventory_sitemaps.py`` -- see git
+#: history).
+EVENT_PATTERNS = re.compile(
+    r"(tribe_events|tribe_event_series|tribe_events_cat|tribe_venue|tribe_organizer"
+    r"|tec_recurring|ajde_events|stec_event|event|events)",
+    re.IGNORECASE,
+)
+
+#: Sitemap child-filename patterns for program/course content. Ported
+#: from that same since-deleted prototype's ``PROGRAM_PATTERNS``.
+PROGRAM_PATTERNS = re.compile(
+    r"(program|course|workshop|camp|class|training)", re.IGNORECASE
+)
+
+#: URL-path pattern applied to individual ``<loc>`` values -- the
+#: fallback for sites with no dedicated event sitemap (a flat
+#: ``sitemap.xml`` urlset, or a ``<sitemapindex>`` whose children have
+#: no event/program-suggestive filename). Ported from a since-deleted
+#: early prototype's ``get_event_urls`` inline regex
+#: (``dev/lib/sitemap_parser.py`` -- see git history).
+EVENT_PATH_RE = re.compile(
+    r"/(events?|tribe_events|public-events?|science-events?|"
+    r"programs?|courses?|camps?|classes|workshops?|training|calendar)(/|$)",
+    re.IGNORECASE,
+)
+
+#: Candidate root sitemap filenames, tried in order against
+#: ``{site_url}/{filename}``. ``sitemap-index.xml`` (hyphenated) is a
+#: real-world variant confirmed live on jointheleague.org (an
+#: Astro-generated static site) alongside the more common underscored
+#: ``sitemap_index.xml`` -- sprint 005's Design Rationale.
+_ROOT_SITEMAP_FILENAMES = ("sitemap_index.xml", "sitemap.xml", "sitemap-index.xml")
+
+#: Root elements a sitemap document is recognized by (sitemaps.org
+#: protocol) -- used to decide root-sitemap *acceptance*: an HTTP 200
+#: alone is not sufficient evidence a candidate URL is a real sitemap.
+_SITEMAP_ROOT_TAGS = ("urlset", "sitemapindex")
+
+#: Key prefix (folder in the scrape-cache Store) snapshots are stored under.
+_SNAPSHOT_SUBDIR = "sitemaps"
+
+
+def _snapshot_key(source_id: str) -> str:
+    """The Store key a source's ``{url: lastmod}`` snapshot lives at."""
+    return f"{_SNAPSHOT_SUBDIR}/{source_id}.json"
+
+
+def _read_snapshot(store: Store, key: str) -> dict[str, str]:
+    """Read a source's prior snapshot, or ``{}`` if this is the first
+    run for it (no snapshot stored yet).
+    """
+    snapshot = store.read_json(key)
+    return {} if snapshot is None else snapshot
+
+
+def _write_snapshot(store: Store, key: str, urls: dict[str, str]) -> None:
+    """Persist ``urls`` as the source's new full-state snapshot."""
+    store.write_text(
+        key, json.dumps(urls, indent=2, sort_keys=True), "application/json"
+    )
+
+
+def _local_name(tag: str) -> str:
+    """Strip a namespace URI off an ElementTree tag, e.g.
+    ``{http://www.sitemaps.org/schemas/sitemap/0.9}urlset`` -> ``urlset``.
+    """
+    return tag.split("}")[-1] if "}" in tag else tag
+
+
+def _find_local_child_text(parent: ET.Element, local_name: str) -> str:
+    """Return the stripped text of ``parent``'s first direct child
+    whose tag, once namespace-stripped (:func:`_local_name`), equals
+    ``local_name`` -- or ``""`` if there is no such child.
+
+    The namespace-agnostic counterpart to
+    ``parent.findtext("sm:child", "", _NS)``: used only once the
+    qualified query has already been tried and found nothing (see
+    :func:`_parse_urlset`), since a child in an unqualified or
+    differently-namespaced document cannot be found by a hardcoded
+    namespace URI either.
+    """
+    for child in parent:
+        if _local_name(child.tag) == local_name:
+            return (child.text or "").strip()
+    return ""
+
+
+def _parse_urlset(root: ET.Element, *, path_filter: bool) -> dict[str, str]:
+    """Extract ``{loc: lastmod}`` from a ``<urlset>`` root.
+
+    ``path_filter`` applies :data:`EVENT_PATH_RE` to each ``<loc>`` --
+    used when the urlset came from a generic (non-event-dedicated)
+    sitemap and needs URL-path filtering; skipped when the urlset is
+    already known to be event-dedicated (a filename-matched child
+    sitemap from a ``<sitemapindex>``), where every URL in it is kept.
+
+    **(Sprint 015)** Tries the namespace-qualified ``sm:url`` query
+    (:data:`_NS`, the sitemaps.org 0.9 schema every currently-registered
+    sitemap already validates against) first. Only if that query finds
+    zero ``<url>`` elements does this retry with a namespace-agnostic
+    match over ``root``'s direct children (:func:`_local_name`,
+    already used elsewhere in this module for root/child-tag
+    acceptance) -- a real sitemap declaring a different namespace (the
+    legacy 0.84 schema, confirmed live on sandiego.edu) or none at all
+    otherwise parses with a recognized root element but silently
+    yields zero URLs. See issue 37 and SUC-002 (sprint 015). Purely
+    additive: the fallback only fires when the qualified query already
+    found nothing, so a document that validates against :data:`_NS`
+    is entirely unaffected.
+    """
+    url_els = root.findall("sm:url", _NS)
+    namespace_agnostic = False
+    if not url_els:
+        url_els = [child for child in root if _local_name(child.tag) == "url"]
+        namespace_agnostic = True
+
+    urls: dict[str, str] = {}
+    for url_el in url_els:
+        if namespace_agnostic:
+            loc = _find_local_child_text(url_el, "loc")
+        else:
+            loc = (url_el.findtext("sm:loc", "", _NS) or "").strip()
+        if not loc:
+            continue
+        if path_filter and not EVENT_PATH_RE.search(loc):
+            continue
+        if namespace_agnostic:
+            lastmod = _find_local_child_text(url_el, "lastmod")
+        else:
+            lastmod = (url_el.findtext("sm:lastmod", "", _NS) or "").strip()
+        urls[loc] = lastmod
+    return urls
+
+
+def _is_event_related_filename(loc: str) -> bool:
+    """Whether a child sitemap's own filename (last path segment of its
+    ``<loc>``) matches :data:`EVENT_PATTERNS` or :data:`PROGRAM_PATTERNS`.
+    """
+    filename = loc.rsplit("/", 1)[-1]
+    return bool(EVENT_PATTERNS.search(filename) or PROGRAM_PATTERNS.search(filename))
+
+
+def _parse_sitemap_index(root: ET.Element, fetcher: Fetcher, source: SourceConfig) -> dict[str, str]:
+    """Resolve a ``<sitemapindex>`` root into ``{loc: lastmod}`` across
+    its children.
+
+    Children whose filename matches :data:`EVENT_PATTERNS`/
+    :data:`PROGRAM_PATTERNS` are fetched and fully included (no further
+    path filtering -- an event-dedicated child sitemap's own URLs are
+    trusted as-is; this is what keeps an unrelated sibling child, e.g. a
+    page/post sitemap, from ever being fetched at all). If no child
+    matches by filename, every child is fetched instead and its URLs
+    are kept only when they pass :data:`EVENT_PATH_RE` -- the
+    "URL-path pattern for sites with no dedicated event sitemap"
+    fallback this ticket's Scope calls for.
+
+    A child that fails to fetch (non-200) or fails to parse is logged
+    and skipped -- per-child isolation, one bad child sitemap does not
+    fail the whole source.
+    """
+    children = [
+        (sm.findtext("sm:loc", "", _NS) or "").strip()
+        for sm in root.findall("sm:sitemap", _NS)
+    ]
+    children = [loc for loc in children if loc]
+
+    event_children = [loc for loc in children if _is_event_related_filename(loc)]
+    candidates = event_children if event_children else children
+    path_filter = not event_children
+
+    urls: dict[str, str] = {}
+    for child_url in candidates:
+        response = fetcher.get(child_url, **acquisition_kwargs(source))
+        if response.status != 200:
+            logger.warning(
+                "Child sitemap %s returned status %s; skipping", child_url, response.status
+            )
+            continue
+        try:
+            child_root = ET.fromstring(response.body)
+        except ET.ParseError:
+            logger.warning("Child sitemap %s is not valid XML; skipping", child_url)
+            continue
+        if _local_name(child_root.tag) != "urlset":
+            logger.warning(
+                "Child sitemap %s has unrecognized root element %r; skipping",
+                child_url,
+                child_root.tag,
+            )
+            continue
+        urls.update(_parse_urlset(child_root, path_filter=path_filter))
+    return urls
+
+
+def _parse_sitemap_root(body: str) -> ET.Element | None:
+    """Parse ``body`` as sitemap XML, returning its root element if it
+    parses successfully with a recognized root tag
+    (:data:`_SITEMAP_ROOT_TAGS`), or ``None`` otherwise.
+
+    This is the acceptance test for a root-sitemap candidate -- an HTTP
+    200 status alone is not sufficient evidence a candidate URL is a
+    real sitemap: some sites (e.g. Astro-generated static sites like
+    jointheleague.org) return 200 with a catch-all "not found" HTML body
+    for any path, including conventional sitemap filenames that don't
+    actually exist.
+    """
+    try:
+        root = ET.fromstring(body)
+    except ET.ParseError:
+        return None
+    if _local_name(root.tag) not in _SITEMAP_ROOT_TAGS:
+        return None
+    return root
+
+
+def _fetch_root_sitemap(
+    site_url: str, fetcher: Fetcher, source: SourceConfig, sitemap_url: str | None = None
+) -> tuple[str, ET.Element] | None:
+    """Resolve the root sitemap URL and its already-parsed root element
+    to hand to :func:`_resolve_event_urls`.
+
+    If ``sitemap_url`` is given (``SourceConfig.config["sitemap_url"]``),
+    probing is skipped entirely: that exact URL is fetched and accepted
+    only if it returns 200 *and* parses as sitemap XML
+    (:func:`_parse_sitemap_root`). An override that fails is a final
+    failure, not a trigger to fall back into normal probing -- this
+    ticket's Acceptance Criteria ("skips probing entirely").
+
+    Otherwise, probes each of :data:`_ROOT_SITEMAP_FILENAMES` in order
+    and accepts the first candidate whose body returns 200 *and* parses
+    as sitemap XML -- a 200 response that fails to parse (or parses with
+    an unrecognized root element) is logged and treated as a miss,
+    falling through to the next candidate instead of stopping discovery
+    on a wrong body.
+
+    Returns ``(url, root)`` for whichever candidate was accepted, or
+    ``None`` if every candidate (or the override) failed. The caller
+    never needs to re-parse the body: acceptance already proved it
+    parses with a recognized sitemap root element.
+    """
+    if sitemap_url is not None:
+        response = fetcher.get(sitemap_url, **acquisition_kwargs(source))
+        root = _parse_sitemap_root(response.body) if response.status == 200 else None
+        if root is not None:
+            return sitemap_url, root
+        logger.info(
+            "Configured sitemap_url %s returned status %s or did not parse as "
+            "sitemap XML",
+            sitemap_url,
+            response.status,
+        )
+        return None
+
+    for filename in _ROOT_SITEMAP_FILENAMES:
+        url = f"{site_url}/{filename}"
+        response = fetcher.get(url, **acquisition_kwargs(source))
+        if response.status != 200:
+            logger.info("Sitemap probe %s returned status %s", url, response.status)
+            continue
+        root = _parse_sitemap_root(response.body)
+        if root is None:
+            logger.info(
+                "Sitemap probe %s returned status 200 but did not parse as "
+                "sitemap XML (recognized root element); trying next candidate",
+                url,
+            )
+            continue
+        return url, root
+    return None
+
+
+def _resolve_event_urls(source: SourceConfig, fetcher: Fetcher) -> dict[str, str] | None:
+    """Resolve ``source``'s sitemap(s) into ``{url: lastmod}`` for every
+    discovered event/program page.
+
+    Resolution order: if ``source.config["sitemap_url"]`` is set, that
+    exact URL is fetched directly and probing is skipped entirely.
+    Otherwise, :data:`_ROOT_SITEMAP_FILENAMES` are probed in order and
+    the first candidate whose body parses as recognized sitemap XML is
+    accepted (see :func:`_fetch_root_sitemap`).
+
+    Returns ``None`` (with a logged warning) once every candidate (or
+    the explicit override) fails to resolve to a reachable, parseable
+    sitemap -- never raises, per SUC-009's Error Flow. A distinct return
+    value from ``{}`` (a reachable, well-formed sitemap that simply
+    matched no event URLs) matters to the caller: only a genuine failure
+    should leave a prior snapshot untouched rather than overwriting it
+    with an empty one.
+    """
+    site_url = source.config["site_url"].rstrip("/")
+    sitemap_url = source.config.get("sitemap_url")
+
+    fetched = _fetch_root_sitemap(site_url, fetcher, source, sitemap_url=sitemap_url)
+    if fetched is None:
+        if sitemap_url is not None:
+            logger.warning(
+                "Configured sitemap_url %s for source %r is not a reachable, "
+                "parseable sitemap",
+                sitemap_url,
+                source.source_id,
+            )
+        else:
+            logger.warning(
+                "No reachable sitemap for source %r at %s (tried %s)",
+                source.source_id,
+                site_url,
+                ", ".join(_ROOT_SITEMAP_FILENAMES),
+            )
+        return None
+    _root_url, root = fetched
+
+    tag = _local_name(root.tag)
+    if tag == "sitemapindex":
+        return _parse_sitemap_index(root, fetcher, source)
+    return _parse_urlset(root, path_filter=True)
+
+
+def discover_changed_urls(
+    source: SourceConfig, fetcher: Fetcher, *, changed_only: bool = False
+) -> list[EventRef]:
+    """Resolve ``source``'s sitemap into event ``EventRef``s.
+
+    By default (``changed_only=False``) this returns EVERY discovered
+    event URL each run. That is the correct behavior for an aggregator
+    that republishes the complete current set of opportunities on every
+    run and has no persistent per-event store: returning only
+    ``<lastmod>``-changed URLs here would silently drop every unchanged
+    event from the export (and would empty out most of the site on the
+    second scheduled run). Bandwidth efficiency is already provided one
+    layer down by the fetch cache's conditional GET (ETag/304), so a
+    full URL list does not mean re-downloading unchanged pages.
+
+    The snapshot is still read and rewritten so the incremental
+    ``changed_only=True`` mode remains available for a future design
+    that pairs it with a persistent opportunity store; in that mode this
+    returns only the new or ``<lastmod>``-changed URLs since the last
+    run (the original SUC-009 diff behavior).
+
+    No prior snapshot (first run for this source) treats every
+    discovered URL as new. A malformed or unreachable sitemap yields an
+    empty list and a logged warning rather than raising, and leaves any
+    existing snapshot untouched -- this function must never propagate an
+    exception up through the calling adapter's ``discover()``.
+
+    Each returned ``EventRef``'s ``context`` carries the sitemap's own
+    ``lastmod`` value under the ``"lastmod"`` key, for adapters that
+    want it as a date-recovery fallback signal.
+    """
+    current = _resolve_event_urls(source, fetcher)
+    if current is None:
+        return []
+
+    store = config.get_scrape_cache_store()
+    snapshot_key = _snapshot_key(source.source_id)
+    previous = _read_snapshot(store, snapshot_key)
+
+    refs = [
+        EventRef(url=url, context={"lastmod": lastmod})
+        for url, lastmod in current.items()
+        if not changed_only or previous.get(url) != lastmod
+    ]
+
+    _write_snapshot(store, snapshot_key, current)
+
+    return refs

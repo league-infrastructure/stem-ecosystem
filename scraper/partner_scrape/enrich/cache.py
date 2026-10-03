@@ -1,0 +1,190 @@
+"""Enrichment Cache: identity_key -> (schema_version, prompt_version, content_hash,
+EnrichmentResult, enriched_at).
+
+See sprint.md's Architecture > Enrichment Cache, Design Rationale ("the
+Enrichment Cache is a new module, not reuse of Fetch & Cache's on-disk
+cache"). Tracks which Events have already been enriched at their current
+content so unchanged events skip a fresh LLM call -- cost control, per
+SUC-011.
+
+Sprint 014 (issue 22): each entry also carries `prompt_version`, an
+independent signal from `schema_version` -- see `_CACHE_SCHEMA_VERSION`
+and `PROMPT_VERSION` below for what each one answers and why they are
+checked separately, never conflated.
+
+Persisted under `SCRAPE_CACHE_DIR`, one JSON file per Event
+`identity_key()`, sharded the same way `fetch/cache.py` shards its
+per-URL entries (hash the key into a filesystem-safe filename) --
+`identity_key()` is a tuple, not a string, and its `external_id` variant
+can contain characters that are not safe to use as a filename directly.
+
+This module only stores and retrieves cache entries: it never calls the
+LLM and never decides relevance (both `LLMEnricher`'s job, ticket 005's
+other module). Content hash is computed over an Event's *enrichable*
+fields only -- the fields `llm_client._build_user_prompt` actually reads
+(title, description, start, end, all_day, location, cost,
+registration_url, categories, tags) -- deliberately not the whole
+Event, so unrelated field changes (classification fields this very
+cache round-trips, or `field_provenance` bookkeeping) never force
+spurious re-enrichment.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+from dataclasses import asdict
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Callable
+
+from partner_scrape import config
+from partner_scrape.enrich.llm_client import PROMPT_VERSION, EnrichmentResult
+from partner_scrape.model import Event, IdentityKey
+from partner_scrape.storage import LocalStore, Store
+
+#: Subdirectory of `SCRAPE_CACHE_DIR` entries are stored under.
+_CACHE_SUBDIR = "enrichment"
+
+#: Sprint 009 (issue 13). Bumped whenever `EnrichmentResult`'s shape
+#: changes. `content_hash` covers only an Event's *input* (enrichable)
+#: fields, so it cannot detect a change to the *stored value's* shape --
+#: adding `opportunity_type` doesn't touch any field the hash covers, so
+#: without this an old entry would either silently omit the new field
+#: forever or fail to deserialize. `lookup()` treats a missing or
+#: mismatched `schema_version` (including a pre-sprint-009 entry with no
+#: `schema_version` key at all) as a miss, exactly like a `content_hash`
+#: mismatch -- forcing exactly one re-enrichment per affected Event.
+_CACHE_SCHEMA_VERSION = 1
+
+
+def content_hash(event: Event) -> str:
+    """Compute a stable hash over ``event``'s enrichable fields.
+
+    Only the fields an LLM enrichment call actually reads (mirrors
+    `llm_client._build_user_prompt`'s field list) -- not the whole
+    Event -- so fields this cache itself round-trips
+    (`areas_of_interest`, `relevant`, ...) or unrelated bookkeeping
+    (`field_provenance`) never change the hash.
+    """
+    payload = {
+        "title": event.title,
+        "description": event.description,
+        "start": event.start.isoformat() if event.start is not None else None,
+        "end": event.end.isoformat() if event.end is not None else None,
+        "all_day": event.all_day,
+        "location": event.location,
+        "cost": event.cost,
+        "registration_url": event.registration_url,
+        "categories": event.categories,
+        "tags": event.tags,
+    }
+    canonical = json.dumps(payload, sort_keys=True, default=str)
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def _identity_key_filename(identity_key: IdentityKey) -> str:
+    """Hash ``identity_key`` into a filesystem-safe cache filename stem.
+
+    ``identity_key()`` is a tuple ((source_id, external_id) or
+    (source_id, normalized_title, start_date)) -- not a string, and
+    `external_id` values are not guaranteed to be filesystem-safe, so
+    (like `fetch/cache.py`'s URL-keyed entries) the key is hashed rather
+    than used directly as a path component.
+    """
+    canonical = "|".join(str(part) for part in identity_key)
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def _entry_key(identity_key: IdentityKey) -> str:
+    return f"{_CACHE_SUBDIR}/{_identity_key_filename(identity_key)}.json"
+
+
+def _result_to_jsonable(result: EnrichmentResult) -> dict[str, Any]:
+    data = asdict(result)
+    data["start"] = result.start.isoformat() if result.start is not None else None
+    data["end"] = result.end.isoformat() if result.end is not None else None
+    return data
+
+
+def _result_from_jsonable(data: dict[str, Any]) -> EnrichmentResult:
+    return EnrichmentResult(
+        start=datetime.fromisoformat(data["start"]) if data["start"] is not None else None,
+        end=datetime.fromisoformat(data["end"]) if data["end"] is not None else None,
+        all_day=data["all_day"],
+        location=data["location"],
+        cost=data["cost"],
+        registration_url=data["registration_url"],
+        areas_of_interest=data["areas_of_interest"],
+        age_grade_level=data["age_grade_level"],
+        cost_range=data["cost_range"],
+        time_of_day=data["time_of_day"],
+        opportunity_type=data["opportunity_type"],
+        relevant=data["relevant"],
+        relevance_reason=data["relevance_reason"],
+    )
+
+
+class EnrichmentCache:
+    """Persisted `identity_key -> (content_hash, EnrichmentResult, enriched_at)` map.
+
+    One JSON file per Event `identity_key()` under
+    `enrichment/` in the scrape-cache Store: `cache_dir` (wrapped in a
+    `LocalStore`) when given, else `config.get_scrape_cache_store()` -- tests always pass an
+    explicit `tmp_path` (this module's own tests, and ticket 005's
+    `LLMEnricher` tests, never touch the real configured cache
+    directory).
+    """
+
+    def __init__(
+        self,
+        cache_dir: Path | None = None,
+        clock: Callable[[], datetime] = lambda: datetime.now(timezone.utc),
+    ) -> None:
+        self._store: Store = (
+            LocalStore(cache_dir) if cache_dir is not None else config.get_scrape_cache_store()
+        )
+        self._clock = clock
+
+    def lookup(self, event: Event) -> EnrichmentResult | None:
+        """Return the cached `EnrichmentResult` for ``event`` if its
+        current content hash matches the cached entry's, else ``None``
+        (no cache entry yet, or the Event's enrichable content changed
+        since it was cached).
+        """
+        entry = self._store.read_json(_entry_key(event.identity_key()))
+        if entry is None:
+            return None
+        if entry.get("schema_version") != _CACHE_SCHEMA_VERSION:
+            # Missing key (pre-sprint-009 entry) or a stale version --
+            # both are a miss, not a deserialization error. Forces
+            # exactly one re-enrichment per affected Event.
+            return None
+        if entry.get("prompt_version") != PROMPT_VERSION:
+            # Sprint 014 (issue 22). Independent of the schema_version
+            # check above -- this answers "is the stored *judgment*
+            # still valid under the current prompt," not "is the
+            # stored value's shape still current." A missing key
+            # (pre-sprint-014 entry) or a stale version is a miss,
+            # forcing exactly one re-enrichment per affected Event.
+            # content_hash cannot catch this: it deliberately covers
+            # only an Event's input fields, never the prompt text.
+            return None
+        if entry["content_hash"] != content_hash(event):
+            return None
+        return _result_from_jsonable(entry["result"])
+
+    def store(self, event: Event, result: EnrichmentResult) -> None:
+        """Write a fresh cache entry for ``event`` at its current content hash."""
+        entry = {
+            "schema_version": _CACHE_SCHEMA_VERSION,
+            "prompt_version": PROMPT_VERSION,
+            "content_hash": content_hash(event),
+            "result": _result_to_jsonable(result),
+            "enriched_at": self._clock().isoformat(),
+        }
+        # json.dumps defaults (ensure_ascii) + indent=2, byte-identical to
+        # the files written before the Store existed.
+        self._store.write_text(
+            _entry_key(event.identity_key()), json.dumps(entry, indent=2), "application/json"
+        )

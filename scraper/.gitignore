@@ -1,0 +1,26 @@
+# Generated pipeline output: lives in the Spaces bucket (data/ prefix), not git.
+# A local data/ is a developer's scratch copy.
+/data/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg
+*.egg-info/
+.eggs/
+dist/
+build/
+*.so
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# pytest cache
+.pytest_cache/
+
+# Logs
+*.log

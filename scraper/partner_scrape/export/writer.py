@@ -1,0 +1,267 @@
+"""`export_opportunities()`: the Site Export module's single entry point.
+
+Publishes already-normalized `Opportunity` records (produced by
+`partner_scrape.normalize.run`, ticket 006) into partner-scrape's own
+the data Store (`config.get_data_store()`; sprint.md Architecture > Site Export, SUC-007). This
+module does not re-derive or re-map any field -- its only
+responsibilities are:
+
+1. Filter to current + upcoming records (historical data never ships).
+2. A defensive slug-uniqueness pass (normalize already dedupes by
+   title+date+venue, but distinct records can still collide on the
+   truncated slug -- e.g. same org+title on nearby dates truncated the
+   same way).
+3. Serialize exactly the site schema's field set -- dropping
+   `Opportunity.sources`, which is normalize's own cross-source
+   bookkeeping and not part of `stem-ecosystem/docs/site-implementation
+   -spec.md`'s Opportunities table.
+4. Write `opportunities.json` and `scrape-meta.json` into
+   the data Store, matching `dev/export_site.py`'s original behavior
+   and file shapes exactly.
+
+Sprint 020 ticket 003 (issue 60) added a second write target,
+partner-scrape's own data location (since sprint 038 the data Store,
+`config.get_data_store()`, by default the bucket's `data/` prefix),
+alongside the original write into a sibling `stem-ecosystem` checkout's
+`src/data/` -- "one export, three files, two directories" -- so this
+repo's own pipeline output was inspectable without a
+`stem-ecosystem` checkout on hand. Sprint 025 ticket 003 (issue 21,
+"stop writing to the stem-ecosystem checkout") removed the
+`stem-ecosystem` write entirely: this function no longer accepts a
+`site_dir` parameter, and the data location is now the sole write target.
+
+A missing local data directory is created automatically; an unwritable
+one fails loudly -- SUC-007's explicit error flow is "fail loudly, do not
+silently skip the export."
+"""
+
+from __future__ import annotations
+
+import json
+from collections import Counter
+from dataclasses import fields
+from datetime import date, datetime, timedelta, timezone
+from pathlib import Path
+from typing import Any, Iterable
+
+from partner_scrape.config import resolve_data_store
+from partner_scrape.normalize.run import DEADLINE_FIRST_TYPES, Opportunity
+from partner_scrape.storage import Store
+
+#: The bucket label an unclassified (``region == ""``) `Opportunity` is
+#: tallied under in `scrape-meta.json`'s `"regions"` key (sprint 033,
+#: issue 34) -- matches `observability/yield_report.py`'s own
+#: `_UNCLASSIFIED_REGION_LABEL`, kept as a separate constant here rather
+#: than a shared import: this is a plain aggregation of an already-
+#: finished field, not a shared computation, and `export/` and
+#: `observability/` are independently decoupled subsystems by design
+#: (see each module's own DESIGN.md).
+_UNCLASSIFIED_REGION_LABEL = "unclassified"
+
+#: The exact field set written to `opportunities.json` -- every
+#: `Opportunity` field except `sources`, which is normalize's internal
+#: bookkeeping (the set of contributing `source_id`s) and has no
+#: counterpart in the site's schema. Derived from the dataclass fields
+#: rather than hand-listed so it can never drift from `Opportunity`
+#: itself.
+#:
+#: Sprint 009: promoted from `_SITE_SCHEMA_FIELDS` (non-underscore, no
+#: behavior change) so `export/publish.py` reuses the exact same field
+#: set for its own per-partner event files instead of re-deriving it.
+#:
+#: Sprint 033: also excludes `region` -- a second internal-bookkeeping
+#: field (this sprint's regional-coverage classification), not part of
+#: the site's Opportunities table, the same treatment `sources` already
+#: gets. `region`'s *aggregate* (a per-region count, not the per-record
+#: value) is written into `scrape-meta.json` instead -- see
+#: `export_opportunities`'s `"regions"` key.
+SITE_SCHEMA_FIELDS: tuple[str, ...] = tuple(
+    f.name for f in fields(Opportunity) if f.name not in ("sources", "region")
+)
+
+#: Sprint 020 ticket 001 (issue 61): bounds the `DEADLINE_FIRST_TYPES`
+#: "no `date_end` still counts as open" rule (below) to records whose
+#: `date_start` is no older than this many days before `today`. Without
+#: this bound, a genuinely one-time past event that happens to lack a
+#: recorded deadline -- the reported case, "2nd Innovation in Women's
+#: Health Pitch Competition" (`opportunity_type="Competitions"`,
+#: `date_start` 2024-12-01, no `date_end`, ~638 days stale) -- exports as
+#: perpetually current. 365 days is comfortably above the existing
+#: 30-day-old regression cases
+#: (`test_competitions_no_deadline_with_past_start_is_included`,
+#: `test_no_deadline_internship_with_past_start_is_included`) that this
+#: rule must keep protecting, and comfortably below the ~638-day-old
+#: reported outlier; it is not tightly calibrated beyond that one case
+#: (sprint 020 sprint.md Open Questions) and may need revisiting if more
+#: stale-but-undated records surface in production.
+_DEADLINE_FIRST_STALE_POSTING_DAYS = 365
+
+
+def is_current_or_upcoming(opportunity: Opportunity, today: date) -> bool:
+    """True if `opportunity`'s end date, or start date if no end date, is
+    today or later (SUC-007 main flow step 1). Undated records (neither
+    `date_start` nor `date_end` set) are excluded -- matching
+    `dev/export_site.py`'s equivalent string comparison, an unset date
+    can never be judged "today or later".
+
+    `opportunity_type in DEADLINE_FIRST_TYPES` (originally just
+    `"Work-based Learning"`/internship) records get a different rule
+    (sprint 006 Design Rationale, SUC-004; generalized sprint 015 ticket
+    007): `date_start` is redefined as the posting-observed date, which
+    is routinely in the past for a still-open, no-deadline record -- the
+    ordinary `date_end or date_start >= today` rule would wrongly expire
+    it. Such a record is current if `date_end` (the application/
+    registration deadline) is unset and `date_start` is within
+    `_DEADLINE_FIRST_STALE_POSTING_DAYS` of `today` (sprint 020 ticket
+    001, SUC-020, issue 61) -- older than that, the posting is presumed
+    stale/closed rather than perpetually open -- or `date_end` is set and
+    still in the future; every other `opportunity_type` keeps the exact
+    rule above, unchanged.
+
+    Sprint 009: promoted from `_is_current_or_upcoming` (non-underscore,
+    no behavior change) so `export/publish.py` reuses this exact
+    judgment for its current/past split instead of reimplementing it.
+    """
+    if opportunity.opportunity_type in DEADLINE_FIRST_TYPES:
+        if not opportunity.date_end:
+            if not opportunity.date_start:
+                return False
+            start = date.fromisoformat(opportunity.date_start[:10])
+            stale_cutoff = today - timedelta(days=_DEADLINE_FIRST_STALE_POSTING_DAYS)
+            return start >= stale_cutoff
+        return date.fromisoformat(opportunity.date_end[:10]) >= today
+
+    date_str = opportunity.date_end or opportunity.date_start
+    if not date_str:
+        return False
+    return date.fromisoformat(date_str[:10]) >= today
+
+
+def to_json_dict(opportunity: Opportunity) -> dict[str, Any]:
+    """Project `opportunity` onto exactly `SITE_SCHEMA_FIELDS` -- this is
+    where `sources` (and any other future non-schema field) is dropped.
+
+    Sprint 009: promoted from `_to_json_dict` (non-underscore, no
+    behavior change) so `export/publish.py` reuses this exact
+    serialization for its own per-partner event files.
+    """
+    return {name: getattr(opportunity, name) for name in SITE_SCHEMA_FIELDS}
+
+
+def _dedupe_slugs(payload: list[dict[str, Any]]) -> None:
+    """Disambiguate colliding `slug`s in place with a numeric suffix,
+    matching `dev/export_site.py`'s `seen`-dict approach. Neither
+    colliding record is dropped -- only the later one's slug changes."""
+    seen: dict[str, int] = {}
+    for record in payload:
+        slug = record["slug"]
+        if slug in seen:
+            seen[slug] += 1
+            record["slug"] = f"{slug}_{seen[slug]}"
+        else:
+            seen[slug] = 1
+
+
+def _export_sort_key(opportunity: Opportunity) -> str:
+    """Sort key for the exported payload: `date_end` for a
+    `DEADLINE_FIRST_TYPES` record (sprint 015 ticket 007), `date_start`
+    for every other record (unchanged).
+
+    A deadline-first record's `date_start` is a posting-observed date,
+    not the date that should drive ordering -- a winter-posted internship
+    or competition with a spring/summer deadline must sort near other
+    near-term deadlines, not get stuck at the top (or bottom) of the list
+    by a stale `date_start` (issue 27's "Dec-Mar deadlines for Jun-Aug
+    programs in winter" scenario).
+    """
+    if opportunity.opportunity_type in DEADLINE_FIRST_TYPES:
+        return opportunity.date_end
+    return opportunity.date_start
+
+
+def _region_counts(current: list[Opportunity]) -> dict[str, int]:
+    """Tally ``current`` (the exported current/upcoming `Opportunity`
+    list) by `.region` (sprint 033, issue 34) -- a plain `Counter`, not a
+    re-derivation: `region` already arrived finished from `normalize/`
+    (see this module's "`export/` re-derives nothing" constraint).
+    Unclassified (``region == ""``) is tallied under
+    `_UNCLASSIFIED_REGION_LABEL`, never silently dropped.
+    """
+    counter: Counter[str] = Counter(
+        opportunity.region or _UNCLASSIFIED_REGION_LABEL for opportunity in current
+    )
+    return dict(counter)
+
+
+def _now_iso() -> str:
+    """Current UTC time as the `scrape-meta.json` timestamp format,
+    matching `dev/export_site.py`'s `datetime.now(timezone.utc)...`
+    formatting exactly."""
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def export_opportunities(
+    opportunities: Iterable[Opportunity],
+    *,
+    today: date | None = None,
+    dry_run: bool = False,
+    own_data_dir: str | Path | Store | None = None,
+) -> list[dict[str, Any]]:
+    """Filter, dedupe, and write `opportunities` into `own_data_dir`'s
+    data contract.
+
+    Args:
+        opportunities: normalized, deduplicated `Opportunity` records
+            (typically `normalize.run()`'s output).
+        today: the reference date for the current/upcoming filter.
+            Defaults to `date.today()`. Tests should pass an explicit
+            value for determinism.
+        dry_run: when `True`, compute and return the would-be-written
+            payload without touching disk -- `own_data_dir` is not
+            written.
+        own_data_dir: where to write -- a local path, an `s3://` location,
+            or a `Store`. Defaults to `config.get_data_store()` (by
+            default the bucket's `data/` prefix) when `None`. A local
+            directory is created automatically if missing. Tests should
+            always pass an explicit `tmp_path` here, never rely on the
+            default.
+
+    Returns:
+        The list of opportunity dicts that were (or, for `dry_run`,
+        would have been) written, in the exact shape and field set
+        written to `opportunities.json`.
+
+    Raises:
+        RuntimeError: `own_data_dir` is occupied by something
+            unwritable (e.g. a non-directory file). Never silently
+            skips the write.
+    """
+    reference_date = today if today is not None else date.today()
+
+    current = [o for o in opportunities if is_current_or_upcoming(o, reference_date)]
+    current.sort(key=_export_sort_key)
+
+    payload = [to_json_dict(o) for o in current]
+    _dedupe_slugs(payload)
+
+    if dry_run:
+        return payload
+
+    serialized_opportunities = json.dumps(payload, indent=1, ensure_ascii=False)
+    serialized_meta = json.dumps(
+        {"last_updated": _now_iso(), "regions": _region_counts(current)}
+    )
+
+    # Sprint 020 ticket 003 (issue 60) added this write; since sprint
+    # 038 it goes through the data Store (keys unchanged).
+    store = resolve_data_store(own_data_dir)
+    try:
+        store.write_text("opportunities.json", serialized_opportunities, "application/json")
+        store.write_text("scrape-meta.json", serialized_meta, "application/json")
+    except RuntimeError as exc:
+        raise RuntimeError(
+            f"Cannot write own-data export: {exc}. "
+            "Check that the data location is writable."
+        ) from exc
+
+    return payload
