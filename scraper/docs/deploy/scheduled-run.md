@@ -75,8 +75,30 @@ cron be trusted to run unattended.
 
 ## Getting the data onto the site
 
-The scheduled run updates the bucket, not the site. The site's deploy
+The scrape job updates the bucket, not the site. The site's deploy
 workflow runs `npm run fetch-data` at the repo root before every build
 (anonymous HTTPS from the bucket's public `data/` prefix; no credentials,
-nothing committed). To publish a fresh scrape, re-run the site's Deploy
-workflow (or push to `master`).
+nothing committed).
+
+**Auto-deploy.** When the `scrape` job succeeds, a second job in
+`scheduled-run.yml` (`deploy`, `needs: scrape`) runs
+`gh workflow run deploy.yml --ref <default branch>`, so the live site
+rebuilds from the fresh data. If the scrape fails or is cancelled, the
+deploy job is skipped and the site keeps its last build. Only that job has
+`actions: write`; the scrape job stays `contents: read`. A dispatch (unlike
+a push made with `GITHUB_TOKEN`) does trigger workflows, and deploy.yml's
+`paths-ignore` applies to pushes only, so it does not affect it.
+
+To verify end to end, run `gh workflow run scheduled-run.yml --repo
+league-infrastructure/stem-ecosystem`, then confirm that a Deploy run
+appears (`gh run list --workflow deploy.yml`, event `workflow_dispatch`)
+after the scrape job finishes. To publish without a scrape, run
+`gh workflow run deploy.yml` or push to `master`.
+
+## Known risk: job timeout
+
+The scrape job has `timeout-minutes: 30`, but a full local Docker scrape
+took about 80 minutes (mostly LLM enrichment, ~4.7k calls with a partially
+warm cache). A cold or large run may be killed by the timeout, which fails
+the job and skips the deploy. Raise the timeout (GitHub allows up to 360
+minutes on hosted runners) if runs are cut off.

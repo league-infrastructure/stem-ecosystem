@@ -83,3 +83,28 @@ jobs:
             cat "${{ runner.temp }}/yield-report.txt" 2>/dev/null || echo '(no report -- the run step failed before printing one)'
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
+
+  # Rebuild the live site from the fresh bucket data. Runs only when the
+  # scrape job succeeded (default `needs` behaviour: skipped on failure or
+  # cancellation). Events created with GITHUB_TOKEN do not trigger other
+  # workflows, but an explicit workflow_dispatch does, given actions: write.
+  # That permission is granted to this job only; the scrape job keeps
+  # contents: read. deploy.yml's paths-ignore applies to push events only,
+  # so it does not affect dispatch, and deploy.yml's own concurrency group
+  # is untouched.
+  deploy:
+    name: Dispatch site deploy
+    needs: scrape
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: write
+      contents: read
+    steps:
+      - name: Dispatch deploy.yml on the default branch
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh workflow run deploy.yml \
+            --repo "${{ github.repository }}" \
+            --ref "${{ github.event.repository.default_branch }}"
