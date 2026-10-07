@@ -3,11 +3,16 @@
   "type": "module",
   "version": "0.20261007.2",
   "scripts": {
+    "fetch-data": "node scripts/fetch-data.mjs",
+    "predev": "node scripts/fetch-data.mjs --if-missing",
+    "prestart": "node scripts/fetch-data.mjs --if-missing",
     "dev": "astro dev",
     "start": "astro dev",
+    "prebuild": "node scripts/fetch-data.mjs --if-missing",
     "build": "astro build",
     "preview": "astro preview",
-    "astro": "astro"
+    "astro": "astro",
+    "test": "node --test \"scripts/test/*.test.mjs\""
   },
   "dependencies": {
     "astro": "^6.1.5",
