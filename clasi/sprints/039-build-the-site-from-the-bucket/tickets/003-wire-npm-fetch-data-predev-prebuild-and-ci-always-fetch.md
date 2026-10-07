@@ -1,9 +1,11 @@
 ---
 id: '003'
 title: Wire npm fetch-data, predev/prebuild, and CI always-fetch
-status: open
-use-cases: [SUC-002]
-depends-on: ["002"]
+status: in-progress
+use-cases:
+- SUC-002
+depends-on:
+- '002'
 github-issue: ''
 issue: 69-build-the-site-from-the-bucket-and-stop-committing-scraped-data.md
 completes_issue: true
