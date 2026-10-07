@@ -1,9 +1,12 @@
 ---
 id: '004'
 title: Untrack generated data and images; retire fetch-data.sh
-status: open
-use-cases: [SUC-003]
-depends-on: ["001", "003"]
+status: done
+use-cases:
+- SUC-003
+depends-on:
+- '001'
+- '003'
 github-issue: ''
 issue: 69-build-the-site-from-the-bucket-and-stop-committing-scraped-data.md
 completes_issue: true
@@ -18,11 +21,11 @@ git rm --cached all generated files (src/data opportunities, scrape-meta, ads, y
 
 ## Acceptance Criteria
 
-- [ ] git ls-files shows no generated data/image file; src/data/partners.json still tracked and unchanged
-- [ ] Generated paths are in .gitignore (verify partners.json is not ignored)
-- [ ] scripts/fetch-data.sh removed; no remaining references (grep)
-- [ ] After a clean checkout, `npm ci && npm run build` succeeds
-- [ ] Only generated data files and ignore/script changes are in the commit
+- [x] git ls-files shows no generated data/image file; src/data/partners.json still tracked and unchanged
+- [x] Generated paths are in .gitignore (verify partners.json is not ignored)
+- [x] scripts/fetch-data.sh removed; no remaining references (grep)
+- [x] After a clean checkout, `npm ci && npm run build` succeeds
+- [x] Only generated data files and ignore/script changes are in the commit
 
 ## Implementation Plan
 

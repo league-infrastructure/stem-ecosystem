@@ -34,3 +34,15 @@ npm-debug.log*
 .clasi/.clasi.db-wal
 .clasi/.clasi.db-shm
 .clasi/log/
+
+# Generated site data, fetched from the bucket by scripts/fetch-data.mjs
+# (src/data/partners.json is hand-curated and stays tracked)
+/src/data/opportunities.json
+/src/data/scrape-meta.json
+/src/data/ads.json
+/src/data/yield-history.json
+/src/data/teams.json
+/src/data/places.json
+/src/data/clubs.json
+/public/data/
+/public/images/opportunities/
