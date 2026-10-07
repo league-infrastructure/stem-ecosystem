@@ -1,8 +1,9 @@
 ---
 id: '001'
 title: Scraper publishes data/ public-read; backfill existing objects
-status: open
-use-cases: [SUC-001]
+status: done
+use-cases:
+- SUC-001
 depends-on: []
 github-issue: ''
 issue: 69-build-the-site-from-the-bucket-and-stop-committing-scraped-data.md
@@ -18,12 +19,12 @@ The coordinator's spike (2026-10-07) showed put_object_acl(ACL='public-read') wo
 
 ## Acceptance Criteria
 
-- [ ] Store.write_bytes passes ACL='public-read' for data/ keys only; cache/ writes carry no ACL
-- [ ] Unit tests with a mocked client cover data/ and cache/ keys
-- [ ] Backfill script (scraper/scripts or a partner-scrape subcommand, idempotent, supports --dry-run) sets public-read on every data/ object
-- [ ] Backfill run against the bucket; anonymous GET of data/scrape-meta.json, one partners/<slug>/events.json and one images/opportunities/ file return 200
-- [ ] Anonymous GET of a cache/ object returns 403; finding recorded in the ticket
-- [ ] Check whether --site-dir writes conflict with the now-ignored paths; note result
+- [x] Store.write_bytes passes ACL='public-read' for data/ keys only; cache/ writes carry no ACL
+- [x] Unit tests with a mocked client cover data/ and cache/ keys
+- [x] Backfill script (scraper/scripts or a partner-scrape subcommand, idempotent, supports --dry-run) sets public-read on every data/ object
+- [x] Backfill run against the bucket; anonymous GET of data/scrape-meta.json, one partners/<slug>/events.json and one images/opportunities/ file return 200
+- [x] Anonymous GET of a cache/ object returns 403; finding recorded in the ticket
+- [x] Check whether --site-dir writes conflict with the now-ignored paths; note result
 
 ## Implementation Plan
 
@@ -34,3 +35,11 @@ Files to create/modify: scraper/partner_scrape/storage.py, new backfill script, 
 - **Existing tests to run**: `uv run pytest` (scraper) if scraper touched; `npm run build`
 - **New tests to write**: as listed in acceptance criteria
 - **Verification command**: `uv run pytest (from scraper/)`
+
+## Results
+
+- Implemented as an explicit `public_read` option on `S3Store` (set by `config.get_data_store()` and `resolve_data_store()` for s3 locations); cache store never sets it.
+- Backfill: `scraper/scripts/backfill_public_read.py [--dry-run]`; ran for real: 1065 objects under data/ set public-read (idempotent re-run OK).
+- Anonymous GET 200: data/scrape-meta.json, data/partners/4_h_san_diego_ucce/events.json, data/images/opportunities/00168f7513f4a142.jpg.
+- Anonymous GET of a cache/ object (cache/descriptions/023c...json) returns 403.
+- `--site-dir` is read-only (partners.json only); scraped output goes to the data store, so no conflict with ignored paths.

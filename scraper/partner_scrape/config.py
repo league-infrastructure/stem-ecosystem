@@ -486,11 +486,11 @@ def _get_s3_client() -> Any:
     return _s3_client[1]
 
 
-def _store_for(env_var: str, default: str) -> Store:
+def _store_for(env_var: str, default: str, public_read: bool = False) -> Store:
     """Build the Store for ``env_var``'s location (default: the bucket)."""
     location = os.environ.get(env_var) or default
     client = _get_s3_client() if location.startswith("s3://") else None
-    return store_from_location(location, client)
+    return store_from_location(location, client, public_read=public_read)
 
 
 def get_scrape_cache_store() -> Store:
@@ -509,7 +509,9 @@ def get_data_store() -> Store:
     ``PARTNER_SCRAPE_DATA_DIR`` is a local path or ``s3://bucket/prefix``;
     unset, it defaults to :data:`DEFAULT_DATA_LOCATION`.
     """
-    return _store_for(PARTNER_SCRAPE_DATA_DIR_ENV_VAR, DEFAULT_DATA_LOCATION)
+    return _store_for(
+        PARTNER_SCRAPE_DATA_DIR_ENV_VAR, DEFAULT_DATA_LOCATION, public_read=True
+    )
 
 
 def resolve_data_store(location: str | Path | Store | None = None) -> Store:
@@ -525,5 +527,5 @@ def resolve_data_store(location: str | Path | Store | None = None) -> Store:
     if isinstance(location, (str, Path)):
         text = str(location)
         client = _get_s3_client() if text.startswith("s3://") else None
-        return store_from_location(location, client)
+        return store_from_location(location, client, public_read=True)
     return location

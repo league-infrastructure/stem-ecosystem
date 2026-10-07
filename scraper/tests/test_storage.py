@@ -125,3 +125,68 @@ def test_delete_removes_key_and_missing_key_is_not_an_error(store):
     store.delete("d/x.bin")
     assert store.exists("d/x.bin") is False
     store.delete("d/x.bin")  # already gone: no error
+
+
+def _acl_store(prefix, public_read):
+    from unittest.mock import MagicMock
+
+    client = MagicMock()
+    return S3Store(BUCKET, prefix, client, public_read=public_read), client
+
+
+def test_public_read_store_sets_acl_on_writes():
+    s, client = _acl_store("data", True)
+    s.write_bytes("partners/x/events.json", b"{}", "application/json")
+    s.write_json("scrape-meta.json", {})
+    for call in client.put_object.call_args_list:
+        assert call.kwargs["ACL"] == "public-read"
+        assert call.kwargs["Key"].startswith("data/")
+
+
+def test_private_store_has_no_acl():
+    s, client = _acl_store("cache", False)
+    s.write_bytes("hosts/a.json", b"{}")
+    assert "ACL" not in client.put_object.call_args.kwargs
+
+
+def test_store_from_location_public_read_flag():
+    from unittest.mock import MagicMock
+
+    assert store_from_location("s3://b/data", MagicMock(), public_read=True).public_read
+    assert not store_from_location("s3://b/cache", MagicMock()).public_read
+
+
+def test_get_data_store_public_cache_private(monkeypatch):
+    from partner_scrape import config
+
+    monkeypatch.setenv("DO_SPACES_ENDPOINT", "https://sfo3.digitaloceanspaces.com")
+    monkeypatch.setenv("DO_SPACES_ACCESS_KEY", "a")
+    monkeypatch.setenv("DO_SPACES_SECRET_KEY", "b")
+    monkeypatch.setenv("PARTNER_SCRAPE_DATA_DIR", "s3://bkt/data")
+    monkeypatch.setenv("SCRAPE_CACHE_DIR", "s3://bkt/cache")
+    with mock_aws():
+        assert config.get_data_store().public_read is True
+        assert config.get_scrape_cache_store().public_read is False
+
+
+def test_backfill_sets_acl_on_data_keys_only():
+    import importlib.util
+    from pathlib import Path
+
+    spec = importlib.util.spec_from_file_location(
+        "backfill", Path(__file__).parent.parent / "scripts" / "backfill_public_read.py"
+    )
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    s, client = _acl_store("data", True)
+    client.get_paginator.return_value.paginate.return_value = [
+        {"Contents": [{"Key": "data/a.json"}, {"Key": "data/images/b.png"}]}
+    ]
+    assert mod.backfill(s, dry_run=True) == 2
+    client.put_object_acl.assert_not_called()
+    assert mod.backfill(s) == 2
+    keys = [c.kwargs["Key"] for c in client.put_object_acl.call_args_list]
+    assert keys == ["data/a.json", "data/images/b.png"]
+    assert all(
+        c.kwargs["ACL"] == "public-read" for c in client.put_object_acl.call_args_list
+    )

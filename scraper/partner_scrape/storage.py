@@ -143,7 +143,12 @@ class LocalStore(_TextJsonMixin):
 class S3Store(_TextJsonMixin):
     """Store over an S3-compatible bucket, with every key under `prefix`."""
 
-    def __init__(self, bucket: str, prefix: str, client: Any):
+    def __init__(
+        self, bucket: str, prefix: str, client: Any, public_read: bool = False
+    ):
+        # `public_read`: every write carries ACL='public-read'. Set only on
+        # the data store (published output); the cache store stays private.
+        self.public_read = public_read
         self.bucket = bucket
         self.prefix = prefix.strip("/")
         self.client = client
@@ -169,6 +174,8 @@ class S3Store(_TextJsonMixin):
         kwargs: dict[str, Any] = {}
         if content_type:
             kwargs["ContentType"] = content_type
+        if self.public_read:
+            kwargs["ACL"] = "public-read"
         self.client.put_object(
             Bucket=self.bucket, Key=self._key(key), Body=data, **kwargs
         )
@@ -203,12 +210,16 @@ class S3Store(_TextJsonMixin):
         return sorted(keys)
 
 
-def store_from_location(location: str | Path, client: Any = None) -> Store:
+def store_from_location(
+    location: str | Path, client: Any = None, public_read: bool = False
+) -> Store:
     """`s3://bucket/prefix` -> `S3Store` (using `client`); anything else ->
     `LocalStore`. The client is injected by the caller (config), never built
-    here.
+    here. `public_read` applies to `S3Store` only (local stores ignore it).
     """
     if isinstance(location, str) and location.startswith("s3://"):
         parsed = urlparse(location)
-        return S3Store(parsed.netloc, parsed.path.strip("/"), client)
+        return S3Store(
+            parsed.netloc, parsed.path.strip("/"), client, public_read=public_read
+        )
     return LocalStore(Path(location))

@@ -52,12 +52,12 @@ def _forbid_real_bucket(request, monkeypatch):
         return
     original = storage.S3Store.__init__
 
-    def guarded(self, bucket, prefix, client):
+    def guarded(self, bucket, prefix, client, *args, **kwargs):
         if bucket == REAL_BUCKET and not botocore_stubber.enabled:
             pytest.fail(
                 f"test built an S3Store for the real bucket {REAL_BUCKET!r} "
                 "without moto (mock_aws); use tmp_path locations or mock_aws."
             )
-        original(self, bucket, prefix, client)
+        original(self, bucket, prefix, client, *args, **kwargs)
 
     monkeypatch.setattr(storage.S3Store, "__init__", guarded)
