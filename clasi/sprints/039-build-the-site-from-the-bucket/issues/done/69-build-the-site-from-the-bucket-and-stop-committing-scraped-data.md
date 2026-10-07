@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: done
 related: clasi/issues/67-hide-ended-opportunities-at-view-time.md
 sprint: 039
 tickets:
