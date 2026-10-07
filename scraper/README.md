@@ -95,6 +95,11 @@ The CLI is `partner-scrape [flags]` -- there is no `run` subcommand;
 Output schema: `docs/data-schema.md` (bundled in the wheel and published
 to `data/SCHEMA.md` in the data bucket at the end of every non-dry-run).
 `data/` is gitignored; a local `data/` is only a scratch copy.
+The bucket's `data/` prefix is published with public-read ACLs (`cache/` stays
+private); the site downloads it over anonymous HTTPS at build time with
+`npm run fetch-data` at the repo root (`--local <data-dir>` copies from a local
+scraper data dir instead). Existing objects can be backfilled with
+`scripts/backfill_public_read.py`.
 
 One source's adapter failing (network error, malformed response, ...) is
 logged and skipped -- it never aborts the rest of the run.

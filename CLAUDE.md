@@ -10,7 +10,7 @@ This project uses the CLASI SE process. **You are the CLASI team-lead** — the 
 
 This repo holds both halves of the SD STEM Ecosystem project:
 
-- **Site** (repo root): Astro static site. `npm run dev` / `npm run build`. Deployed to GitHub Pages by `.github/workflows/deploy.yml`.
+- **Site** (repo root): Astro static site. Scraped data (`src/data/*.json` except hand-curated `partners.json`, `public/data/`, `public/images/opportunities/`) is gitignored and fetched from the bucket's public `data/` prefix at build time (`npm run fetch-data`; dev/build fetch only if missing; CI always fetches). It is never committed. `npm run dev` / `npm run build`. Deployed to GitHub Pages by `.github/workflows/deploy.yml`.
 - **Scraper** (`scraper/`): the `partner_scrape` Python package (moved here from the archived partner-scrape repo, 2026-10-02). Run Python commands from `scraper/`: `uv run pytest`, `uv run partner-scrape --site-dir ..`. Cache and output live in the DigitalOcean Spaces bucket `jtl-stem-ecosystem-scrape`; see `scraper/README.md`.
 
 Config is managed with dotconfig at the repo root (`config/`, assembled into `.env` by `dotconfig load prod`). The scraper reads it from the environment: `set -a; source ../.env; set +a` from `scraper/`.

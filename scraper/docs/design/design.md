@@ -30,8 +30,8 @@ It is one half of a two-part project that lives in one repository (since 2026-10
   static site that consumes that contract and renders the public directory.
 
 The boundary between them is the published data contract in the DigitalOcean Spaces bucket
-`jtl-stem-ecosystem-scrape` (`data/` prefix, since sprint 038), which the site pulls with
-`scripts/fetch-data.sh`, plus the curated roster `src/data/partners.json` that the scraper
+`jtl-stem-ecosystem-scrape` (`data/` prefix, since sprint 038), which the site downloads over
+anonymous HTTPS at build time with `scripts/fetch-data.mjs` (`npm run fetch-data`), plus the curated roster `src/data/partners.json` that the scraper
 reads from the site. Nothing else crosses.
 
 A run is scheduled, unattended, and expected to partially fail: with ~100 independent

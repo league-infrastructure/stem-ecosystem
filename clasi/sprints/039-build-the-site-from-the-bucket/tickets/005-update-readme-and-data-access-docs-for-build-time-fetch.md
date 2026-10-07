@@ -1,9 +1,11 @@
 ---
 id: '005'
 title: Update README and data-access docs for build-time fetch
-status: open
-use-cases: [SUC-003]
-depends-on: ["004"]
+status: in-progress
+use-cases:
+- SUC-003
+depends-on:
+- '004'
 github-issue: ''
 issue: 69-build-the-site-from-the-bucket-and-stop-committing-scraped-data.md
 completes_issue: true

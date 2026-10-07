@@ -75,10 +75,8 @@ cron be trusted to run unattended.
 
 ## Getting the data onto the site
 
-The scheduled run updates the bucket, not the site. To publish:
-
-1. Run `scripts/fetch-data.sh --bucket` at the repo root.
-2. Commit the refreshed site data and push.
-
-Wiring the fetch into the site's build/deploy workflows is a planned
-follow-up.
+The scheduled run updates the bucket, not the site. The site's deploy
+workflow runs `npm run fetch-data` at the repo root before every build
+(anonymous HTTPS from the bucket's public `data/` prefix; no credentials,
+nothing committed). To publish a fresh scrape, re-run the site's Deploy
+workflow (or push to `master`).

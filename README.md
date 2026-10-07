@@ -4,9 +4,10 @@ The production website for [sdstemecosystem.org](https://www.sdstemecosystem.org
 directory of San Diego STEM learning opportunities, partner organizations, robotics teams,
 places and clubs. Built with Astro, deployed as a static site to GitHub Pages.
 
-This repo is also the **data publication** point: the JSON under `public/data/` is a public,
-no-auth data contract consumed by other tools and by LLM agents (see `/data-access` and
-`/for-agents` on the live site).
+The site also **publishes** a public, no-auth data contract at `/data/...` (and event images at
+`/images/opportunities/...`) consumed by other tools and by LLM agents (see `/data-access` and
+`/for-agents` on the live site). Those files are not committed here: they are fetched from the
+scraper's bucket at build time (see below). The public URLs are unchanged.
 
 ## Development
 
@@ -15,7 +16,11 @@ npm install
 npm run dev        # http://localhost:4322
 npm run build      # static output to dist/
 npm run preview    # serve the built output
+npm test           # fetch-data script tests
 ```
+
+`dev`, `start` and `build` first fetch the scraped data **only if it is missing**, so local
+development reuses files you already have. Run `npm run fetch-data` to refresh them.
 
 ## The scraper
 
@@ -39,25 +44,33 @@ uv run pytest                       # offline test suite
 
 ## Where the data comes from
 
-Site content is **not** edited here: the scraper's output in the bucket is the source. Pulling
-it into the site is currently a manual step:
+Site content is **not** edited here, and the scraped data is **not committed to git**. The
+bucket's `data/` prefix (`s3://jtl-stem-ecosystem-scrape/data/`) is the source of truth, and it
+is **public**: anonymous HTTPS reads work with no credentials (the scraper sets public-read ACLs
+on that prefix; `cache/` stays private). `scripts/fetch-data.mjs` downloads it into the
+gitignored build inputs:
 
 ```bash
-set -a; source .env; set +a         # DO_SPACES_ACCESS_KEY / DO_SPACES_SECRET_KEY
-scripts/fetch-data.sh               # sync from the bucket (default; needs the aws CLI)
-scripts/fetch-data.sh --local scraper/data   # or copy from a local scraper data dir
+npm run fetch-data                           # always refresh from the bucket over HTTPS
+node scripts/fetch-data.mjs --local scraper/data   # or copy from a local scraper data dir
+node scripts/fetch-data.mjs --if-missing     # no-op when data is already present (used by dev/build)
+SITE_DATA_BASE_URL=https://... npm run fetch-data  # override the source URL
 ```
 
-Review and commit the result. The GitHub workflows do not fetch yet (build-time fetch is a
-planned follow-up). The script never overwrites the hand-curated `src/data/partners.json`.
+- Local `npm run dev` / `npm run build` fetch only if the data is missing; use
+  `npm run fetch-data` to pick up a newer scrape.
+- CI (`deploy.yml`, `build.yml`) **always** runs `npm run fetch-data` before building, so every
+  deploy ships the latest published data. Re-run the deploy after a scrape to publish it.
+- The fetch is staged and validated before anything is replaced, so a failed fetch leaves the
+  previous data intact. It never writes the hand-curated `src/data/partners.json`.
 
 | Path | Owner | Notes |
 |---|---|---|
 | `src/data/partners.json` | **Humans — edit here** | Hand-curated partner roster. A pipeline *input*, not an output. |
-| `src/data/opportunities.json`, `teams.json`, `places.json`, `clubs.json`, `ads.json`, `scrape-meta.json` | Pipeline | Regenerated each run; do not hand-edit. |
-| `src/data/yield-history.json` | Pipeline | Per-run state used to detect source yield regressions. |
-| `public/data/**` | Pipeline | The published data contract (partner roster + per-partner event files). |
-| `public/images/opportunities/` | Pipeline | Self-hosted event images, content-hash named. |
+| `src/data/opportunities.json`, `teams.json`, `places.json`, `clubs.json`, `ads.json`, `scrape-meta.json` | Pipeline | Fetched from the bucket; gitignored; do not hand-edit. |
+| `src/data/yield-history.json` | Pipeline | Fetched, gitignored. Per-run state used to detect source yield regressions. |
+| `public/data/**` | Pipeline | Fetched, gitignored. The published data contract (partner roster + per-partner event files). |
+| `public/images/opportunities/` | Pipeline | Fetched, gitignored. Self-hosted event images, content-hash named. |
 | `public/images/logos/` | Pipeline | Partner logos. |
 
 The curated roster lives here because the scraper reads it from its `--site-dir`, which is
@@ -67,7 +80,7 @@ roster and silently drop partner geocodes and logos.
 ## Deployment
 
 **Production** — `.github/workflows/deploy.yml` builds and deploys to GitHub Pages on every
-push to `master`. It passes `--site` and `--base` from `actions/configure-pages`, so absolute
+push to `master`, fetching the data first (`npm run fetch-data`). It passes `--site` and `--base` from `actions/configure-pages`, so absolute
 URLs in `llms.txt` and `/for-agents` derive from whatever origin actually serves the build
 (see `src/pages/llms.txt.ts`). Nothing hardcodes a domain.
 

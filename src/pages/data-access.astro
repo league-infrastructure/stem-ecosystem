@@ -6,7 +6,8 @@ const base = import.meta.env.BASE_URL.replace(/\/+$/, ''); // "" or "/partner-sc
 // Sprint 010, ticket 001 (issue 16): documents sprint 009's published
 // `public/data/` contract (`export/publish.py::project()`). This page
 // hand-authors its worked example rather than reading a real generated
-// file -- `site/public/data/` does not exist in every checkout (sprint
+// file -- `public/data/` is gitignored and fetched from the bucket at
+// build time (sprint 039), so it does not exist in every checkout (sprint
 // 009 Design Rationale D3) -- so the field list and example below must
 // be kept in sync with `partner_scrape.export.writer.SITE_SCHEMA_FIELDS`
 // by hand; `tests/test_site_data_access_page.py` guards against the
