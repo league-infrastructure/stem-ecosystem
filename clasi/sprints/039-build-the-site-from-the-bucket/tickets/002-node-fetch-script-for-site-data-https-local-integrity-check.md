@@ -1,8 +1,9 @@
 ---
 id: '002'
 title: Node fetch script for site data (HTTPS, --local, integrity check)
-status: open
-use-cases: [SUC-002]
+status: done
+use-cases:
+- SUC-002
 depends-on: []
 github-issue: ''
 issue: 69-build-the-site-from-the-bucket-and-stop-committing-scraped-data.md
@@ -18,12 +19,12 @@ Replace scripts/fetch-data.sh with scripts/fetch-data.mjs (Node 22 fetch, no dep
 
 ## Acceptance Criteria
 
-- [ ] Downloads all required files over HTTPS and writes them to the same destinations as fetch-data.sh
-- [ ] Mirrors: removes stale public/data/partners/<slug> dirs and unreferenced images
-- [ ] Integrity check kept: any referenced image missing, any non-200, or invalid JSON exits non-zero with a clear message
-- [ ] --local <dir> copies from a local scraper output dir with the same mapping and checks
-- [ ] src/data/partners.json is never written (test asserts it)
-- [ ] Fixture-based node test (node --test) covers success, missing image, HTTP error
+- [x] Downloads all required files over HTTPS and writes them to the same destinations as fetch-data.sh
+- [x] Mirrors: removes stale public/data/partners/<slug> dirs and unreferenced images
+- [x] Integrity check kept: any referenced image missing, any non-200, or invalid JSON exits non-zero with a clear message
+- [x] --local <dir> copies from a local scraper output dir with the same mapping and checks
+- [x] src/data/partners.json is never written (test asserts it)
+- [x] Fixture-based node test (node --test) covers success, missing image, HTTP error
 
 ## Implementation Plan
 
