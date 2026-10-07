@@ -1,7 +1,7 @@
 ---
 id: '005'
 title: Update README and data-access docs for build-time fetch
-status: in-progress
+status: done
 use-cases:
 - SUC-003
 depends-on:
@@ -20,10 +20,10 @@ Update README, scraper/README.md, src/pages/data-access.astro (and for-agents / 
 
 ## Acceptance Criteria
 
-- [ ] README documents fetch-on-missing, fetch-data, --local and CI always-fetch
-- [ ] /data-access wording matches; URL contract text unchanged
-- [ ] No mention of fetch-data.sh, aws CLI or committed data remains
-- [ ] npm run build passes
+- [x] README documents fetch-on-missing, fetch-data, --local and CI always-fetch
+- [x] /data-access wording matches; URL contract text unchanged
+- [x] No mention of fetch-data.sh, aws CLI or committed data remains
+- [x] npm run build passes
 
 ## Implementation Plan
 
