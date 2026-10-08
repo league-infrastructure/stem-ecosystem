@@ -1,8 +1,9 @@
 ---
 id: '001'
 title: Commit scraper/docker baseline
-status: open
-use-cases: [SUC-001]
+status: done
+use-cases:
+- SUC-001
 depends-on: []
 github-issue: ''
 issue: 70-run-the-scraper-on-a-schedule-from-a-container-cron.md
@@ -18,8 +19,8 @@ Commit the currently untracked `scraper/docker/` (Dockerfile, Dockerfile.dockeri
 
 ## Acceptance Criteria
 
-- [ ] `scraper/docker/Dockerfile`, `Dockerfile.dockerignore`, `README.md` committed unchanged
-- [ ] Only those paths staged (`git add scraper/docker/...`); `src/pages/index.astro`, `clasi/issues/README.md`, `clasi/issues/67-*`, `clasi/issues/68-*` not staged or modified
+- [x] `scraper/docker/Dockerfile`, `Dockerfile.dockerignore`, `README.md` committed unchanged
+- [x] Only those paths staged (`git add scraper/docker/...`); `src/pages/index.astro`, `clasi/issues/README.md`, `clasi/issues/67-*`, `clasi/issues/68-*` not staged or modified
 
 ## Implementation Plan
 
@@ -30,3 +31,7 @@ Plan: `git add` the three explicit paths, commit. No code changes. Test: `git st
 - **Existing tests to run**: `cd scraper && uv run pytest`
 - **New tests to write**: see acceptance criteria
 - **Verification command**: `cd scraper && uv run pytest`
+
+## Completion Notes
+
+The baseline already landed on master in commit 942b113 (stakeholder-committed), alongside unrelated files. `git ls-files scraper/docker` tracks Dockerfile, Dockerfile.dockerignore and README.md; they were not modified by this ticket. Verified 2026-10-07 that `docker build -f scraper/docker/Dockerfile -t partner-scrape .` succeeds from the repo root. No code changes; no version bump.
