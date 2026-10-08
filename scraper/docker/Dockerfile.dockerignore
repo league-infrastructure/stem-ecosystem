@@ -5,5 +5,9 @@
 !scraper/uv.lock
 !scraper/partner_scrape/
 !scraper/docs/data-schema.md
+!scraper/docker/entrypoint.sh
+!scraper/docker/run-job
+!scraper/docker/load-secrets
+!scraper/docker/crontab
 !src/data/partners.json
 **/__pycache__
