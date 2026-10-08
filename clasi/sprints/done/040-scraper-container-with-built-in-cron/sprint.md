@@ -1,7 +1,7 @@
 ---
 id: '040'
 title: Scraper container with built-in cron
-status: planning-docs
+status: done
 branch: sprint/040-scraper-container-with-built-in-cron
 use-cases:
 - SUC-001
