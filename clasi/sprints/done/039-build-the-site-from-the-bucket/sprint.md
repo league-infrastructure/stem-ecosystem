@@ -1,7 +1,7 @@
 ---
 id: 039
 title: Build the site from the bucket
-status: planning-docs
+status: done
 branch: sprint/039-build-the-site-from-the-bucket
 use-cases:
 - SUC-001
