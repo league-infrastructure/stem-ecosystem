@@ -30,7 +30,7 @@ they were split out of; those numbers refer to the same issue here.
 
 ## Numbering
 
-There is one issue sequence. **The next new issue is 67.**
+There is one issue sequence. **The next new issue is 68.**
 
 - **001-006** (in `done/`): the site's original sequence from
   `docs/issues/`, older than the shared numbering. Not the same issues as the

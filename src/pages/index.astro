@@ -173,6 +173,35 @@ const logoPartners = league
   </section>
 </BaseLayout>
 
+<script>
+  // Wheel scrolling over the Upcoming Opportunities box moves the page
+  // first, until the box is docked just under the sticky header; only then
+  // does the box's own list scroll. Without this the box captures the wheel
+  // as soon as it passes under the cursor, half on screen. Touch scrolling
+  // keeps the browser's native behavior.
+  const box = document.querySelector<HTMLElement>('.upcoming-scroll');
+  const header = document.querySelector<HTMLElement>('.site-header');
+
+  box?.addEventListener('wheel', (e) => {
+    if (e.ctrlKey || box.scrollHeight <= box.clientHeight) return;
+
+    const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? window.innerHeight : 1;
+    const dy = e.deltaY * unit;
+    const dock = header ? header.getBoundingClientRect().bottom : 0;
+    const offset = box.getBoundingClientRect().top - dock;
+
+    // Scrolling down with the box still below the dock line, or up with it
+    // above: scroll the page, but never past the docked position.
+    if (dy > 0 && offset > 1) {
+      e.preventDefault();
+      window.scrollBy({ top: Math.min(dy, offset), behavior: 'instant' });
+    } else if (dy < 0 && offset < -1) {
+      e.preventDefault();
+      window.scrollBy({ top: Math.max(dy, offset), behavior: 'instant' });
+    }
+  }, { passive: false });
+</script>
+
 <style>
   /* Hero, hero-cards, and button styling live in global.css (a dedicated
      Home Page section) so the base-path-safe background images set via

@@ -1,0 +1,9 @@
+# Build context is the repo root, which holds node_modules/, dist/ and
+# the .env. Send only what the Dockerfile copies.
+*
+!scraper/pyproject.toml
+!scraper/uv.lock
+!scraper/partner_scrape/
+!scraper/docs/data-schema.md
+!src/data/partners.json
+**/__pycache__
