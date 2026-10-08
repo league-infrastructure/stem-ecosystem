@@ -1,6 +1,13 @@
 ---
-status: pending
+status: in-progress
 related: clasi/sprints/039-build-the-site-from-the-bucket
+sprint: '040'
+tickets:
+- 040-001
+- 040-002
+- 040-003
+- 040-004
+- 040-005
 ---
 
 # Run the scraper on a schedule from a container with its own cron
