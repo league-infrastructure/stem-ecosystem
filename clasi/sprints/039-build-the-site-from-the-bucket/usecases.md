@@ -36,8 +36,9 @@ status: draft
   - [ ] `git ls-files` lists no generated data/image file
   - [ ] README and `/data-access` describe the new flow
 
-## SUC-004: Live site follows the weekly scrape
-- **Actor**: Scheduled workflow
-- **Main Flow**: after successful scrape, a deploy is triggered; it fetches the new data.
+## SUC-004: Deploy is manual-only
+- **Actor**: Maintainer
+- **Main Flow**: the maintainer manually dispatches the Deploy workflow (Actions -> Deploy -> Run workflow, or `gh workflow run deploy.yml`); it fetches the current data from the bucket and builds. Scheduled and scrape-triggered deploys are retired; scraping runs from a container cron (issue 70) and any rebuild cron is a separate, independently controlled job later.
 - **Acceptance Criteria**:
-  - [ ] Deploy runs after a successful scheduled scrape and not after a failed one
+  - [ ] deploy.yml triggers on workflow_dispatch only (no push, no schedule)
+  - [ ] No GitHub scheduled scrape workflow remains

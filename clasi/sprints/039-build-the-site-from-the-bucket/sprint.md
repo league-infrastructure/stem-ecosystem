@@ -93,5 +93,6 @@ None.
 | 004 | Untrack generated data and images; retire fetch-data.sh | 001, 003 |
 | 005 | Update README and data-access docs for build-time fetch | 004 |
 | 006 | Scheduled scrape triggers a site deploy | 004 |
+| 007 | Make deploy manual-only and remove the GitHub scheduled scrape | 006 |
 
 Tickets execute serially in the order listed.
