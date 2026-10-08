@@ -105,6 +105,84 @@ docker build -f scraper/docker/Dockerfile -t partner-scrape .
 docker rm -f partner-scrape
 ```
 
+## Swarm deployment
+
+Production runs as the `stem-ecosystem` stack on the League Docker swarm,
+defined by `docker-compose.yml` at the repo root. Run everything below from
+the repo root. The swarm nodes are x86_64 and the `swarm1`/`swarm2` Docker
+contexts point at them. Throughout, `<ver>` is the repo tag without the
+leading `v` (tag `v0.20261008.3` -> `0.20261008.3`).
+
+1. **Build and push** the image for `linux/amd64` (an Apple-silicon Mac is
+   arm64, so a plain `docker build` would produce an image the swarm cannot
+   run):
+
+   ```bash
+   docker buildx build --platform linux/amd64 \
+     -f scraper/docker/Dockerfile \
+     -t ghcr.io/league-infrastructure/stem-ecosystem-scraper:<ver> \
+     --push .
+   ```
+
+   The ghcr package is public and linked to the repo, so the swarm needs no
+   pull token (no `--with-registry-auth`). The first time a new package is
+   pushed, set it to public and link it to the repo in the ghcr package
+   settings.
+
+2. **Create the secret** (once). The bundle is piped straight into the swarm
+   and never written to disk or shown:
+
+   ```bash
+   scraper/docker/make-secrets.sh | \
+     docker --context swarm1 secret create stem-ecosystem_scraper_secrets -
+   ```
+
+   The container reads it from `/run/secrets/stem-ecosystem_scraper_secrets`
+   (`SCRAPER_SECRETS_FILE`). Swarm secrets are **immutable**: to change one,
+   create a new secret under a new name, e.g.
+   `stem-ecosystem_scraper_secrets_v2`, update the secret name (in both the
+   service's `secrets:` list, the `SCRAPER_SECRETS_FILE` path, and the
+   top-level `secrets:` block) in `docker-compose.yml`, redeploy (step 4),
+   then remove the old secret with `docker --context swarm1 secret rm`.
+
+3. **Check the release** against the live swarm:
+
+   ```bash
+   ~/proj/league/infrastructure/league-network/scripts/check-release . --tag v<ver> --live
+   ```
+
+   Its warning about the `/dev/shm` tmpfs volume is a known false positive
+   (Chromium needs the 1 GiB tmpfs; see comments in `docker-compose.yml`).
+
+4. **Deploy**:
+
+   ```bash
+   TAG=<ver> docker --context swarm1 stack deploy -c docker-compose.yml stem-ecosystem
+   ```
+
+5. **Verify**:
+
+   ```bash
+   docker --context swarm1 service ps stem-ecosystem_scraper
+   docker --context swarm1 service logs stem-ecosystem_scraper
+   ```
+
+   The task should be `Running`; the logs show the supercronic schedule.
+
+6. **Run a job by hand.** `service ps` shows which node runs the task. Find
+   the container on that node (its context is named after the node, e.g.
+   `swarm1` or `swarm2`) and exec into it:
+
+   ```bash
+   docker --context <node> ps --filter name=stem-ecosystem_scraper --format '{{.Names}}'
+   docker --context <node> exec <container> \
+     run-job scrape --source fleet-science-center --dry-run --no-enrich
+   ```
+
+7. **Update**: repeat steps 1, 3, 4 and 5 with the new version. **Rotate
+   secrets**: see step 2. **Remove** the stack with
+   `docker --context swarm1 stack rm stem-ecosystem`.
+
 ## Site rebuild
 
 The container only refreshes the bucket. Publishing the site is separate and

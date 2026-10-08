@@ -1,11 +1,13 @@
 ---
-id: "003"
-title: "Swarm deploy docs in docker README"
-status: open
-use-cases: [SUC-003]
-depends-on: ["002"]
-github-issue: ""
-issue: "71"
+id: '003'
+title: Swarm deploy docs in docker README
+status: done
+use-cases:
+- SUC-003
+depends-on:
+- '002'
+github-issue: ''
+issue: '71'
 completes_issue: true
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
@@ -18,9 +20,9 @@ Add a swarm deploy section to `scraper/docker/README.md`: build `--platform linu
 
 ## Acceptance Criteria
 
-- [ ] All steps present and in order
-- [ ] No real secret values
-- [ ] Notes that secrets are immutable (rotate by new name/version)
+- [x] All steps present and in order
+- [x] No real secret values
+- [x] Notes that secrets are immutable (rotate by new name/version)
 
 ## Implementation Plan
 
