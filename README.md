@@ -40,7 +40,7 @@ uv run partner-scrape --site-dir ..   # full run; --source <id> for one source, 
 uv run pytest                       # offline test suite
 ```
 
-Scraping is not run by GitHub Actions (the scheduled workflow is retired); it will run from a container cron (see `clasi/issues/70-run-the-scraper-on-a-schedule-from-a-container-cron.md`).
+Scraping is not run by GitHub Actions (the scheduled workflow is retired); it runs on a schedule from a container with built-in cron; see [`scraper/docker/README.md`](scraper/docker/README.md).
 
 ## Where the data comes from
 

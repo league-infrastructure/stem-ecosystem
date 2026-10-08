@@ -1,9 +1,9 @@
 # Scheduled scrape (GitHub workflow retired)
 
 **Status: retired (sprint 039, ticket 007).** `.github/workflows/scheduled-run.yml`
-has been deleted, including its auto-deploy job. Scraping will instead run from
-a container cron; see
-`clasi/issues/70-run-the-scraper-on-a-schedule-from-a-container-cron.md`.
+has been deleted, including its auto-deploy job. Scraping now runs from a
+container with built-in cron; see `scraper/docker/README.md` for build,
+secrets, schedule and operation.
 The old 30-minute job-timeout risk is moot.
 
 Site deploys are **manual only**: Actions -> Deploy -> Run workflow, or
