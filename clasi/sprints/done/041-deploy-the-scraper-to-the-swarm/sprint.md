@@ -1,10 +1,14 @@
 ---
 id: '041'
 title: Deploy the scraper to the swarm
-status: planning-docs
+status: done
 branch: sprint/041-deploy-the-scraper-to-the-swarm
-use-cases: [SUC-001, SUC-002, SUC-003]
-issues: ['71']
+use-cases:
+- SUC-001
+- SUC-002
+- SUC-003
+issues:
+- '71'
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
 
