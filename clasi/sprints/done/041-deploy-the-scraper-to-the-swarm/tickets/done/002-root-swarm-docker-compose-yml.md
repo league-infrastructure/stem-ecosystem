@@ -1,11 +1,13 @@
 ---
-id: "002"
-title: "Root swarm docker-compose.yml"
-status: open
-use-cases: [SUC-002]
-depends-on: ["001"]
-github-issue: ""
-issue: "71"
+id: '002'
+title: Root swarm docker-compose.yml
+status: done
+use-cases:
+- SUC-002
+depends-on:
+- '001'
+github-issue: ''
+issue: '71'
 completes_issue: false
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
@@ -18,10 +20,10 @@ Add root `docker-compose.yml` as the swarm stack file: `x-league: stack: stem-ec
 
 ## Acceptance Criteria
 
-- [ ] `docker compose config` succeeds
-- [ ] `~/proj/league/infrastructure/league-network/scripts/check-release . -v` reports no errors
-- [ ] Local run of the image with a fake secret file (native arch; other arch if emulation available) starts the scheduler and the healthcheck passes
-- [ ] No real secrets used or printed
+- [x] `docker compose config` succeeds
+- [x] `~/proj/league/infrastructure/league-network/scripts/check-release . -v` reports no errors
+- [x] Local run of the image with a fake secret file (native arch; other arch if emulation available) starts the scheduler and the healthcheck passes
+- [x] No real secrets used or printed
 
 ## Implementation Plan
 

@@ -119,6 +119,60 @@ def test_bad_line_exports_nothing():
     assert out.stdout == "<unset>"
 
 
+def test_file_mode_matches_env_mode(tmp_path):
+    bundle = b64("A=one\nB=\"two words\"\n")
+    f = tmp_path / "secret"
+    f.write_text(bundle + "\n")
+    _, from_env = run_load(bundle)
+    proc, from_file = run_load(None, extra_env={"SCRAPER_SECRETS_FILE": str(f)})
+    assert proc.returncode == 0
+    assert from_file == from_env == {"A": "one", "B": "two words", "C": "<unset>"}
+
+
+def test_file_missing_or_unreadable_errors_without_leaking(tmp_path):
+    proc, _ = run_load(
+        b64("A=secretvalue\n"),
+        extra_env={"SCRAPER_SECRETS_FILE": str(tmp_path / "nope")},
+    )
+    assert proc.returncode == 7
+    assert proc.stderr.strip().startswith("load-secrets:")
+    assert "secretvalue" not in proc.stderr + proc.stdout
+    proc, _ = run_load(None, extra_env={"SCRAPER_SECRETS_FILE": str(tmp_path)})
+    assert proc.returncode == 7  # a directory is not a readable file
+
+
+def test_file_bad_content_errors_without_leaking(tmp_path):
+    f = tmp_path / "secret"
+    f.write_text(b64("1BAD=secretvalue\n"))
+    proc, _ = run_load(None, extra_env={"SCRAPER_SECRETS_FILE": str(f)})
+    assert proc.returncode == 7
+    assert "secretvalue" not in proc.stderr + proc.stdout
+
+
+def test_empty_file_is_noop(tmp_path):
+    f = tmp_path / "secret"
+    f.write_text("\n")
+    proc, v = run_load(None, extra_env={"SCRAPER_SECRETS_FILE": str(f)})
+    assert proc.returncode == 0
+    assert v["A"] == "<unset>"
+    assert proc.stderr == ""
+
+
+def test_file_takes_precedence_over_env_bundle(tmp_path):
+    f = tmp_path / "secret"
+    f.write_text(b64("A=fromfile\n"))
+    proc, v = run_load(b64("A=fromenv\nB=fromenv\n"), extra_env={"SCRAPER_SECRETS_FILE": str(f)})
+    assert proc.returncode == 0
+    assert v["A"] == "fromfile" and v["B"] == "<unset>"
+
+
+def test_file_mode_existing_env_wins(tmp_path):
+    f = tmp_path / "secret"
+    f.write_text(b64("A=fromfile\nB=fromfile\n"))
+    proc, v = run_load(None, extra_env={"SCRAPER_SECRETS_FILE": str(f), "A": "preset"})
+    assert v["A"] == "preset" and v["B"] == "fromfile"
+
+
 def write_env(tmp_path, lines):
     p = tmp_path / ".env"
     p.write_text("\n".join(lines) + "\n")
