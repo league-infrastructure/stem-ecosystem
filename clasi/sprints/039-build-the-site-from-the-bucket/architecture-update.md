@@ -1,6 +1,6 @@
 ---
-sprint: "039"
-status: draft
+sprint: 039
+status: done
 ---
 
 # Architecture Update -- Sprint 039: Build the site from the bucket
