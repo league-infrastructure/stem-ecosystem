@@ -1,11 +1,12 @@
 ---
-id: "001"
-title: "load-secrets file support"
-status: open
-use-cases: [SUC-001]
+id: '001'
+title: load-secrets file support
+status: done
+use-cases:
+- SUC-001
 depends-on: []
-github-issue: ""
-issue: "71"
+github-issue: ''
+issue: '71'
 completes_issue: false
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
@@ -18,11 +19,11 @@ Extend `scraper/docker/load-secrets` so the base64 bundle can come from a file n
 
 ## Acceptance Criteria
 
-- [ ] File mode decodes identically to env mode
-- [ ] Missing or unreadable file gives an error without printing values
-- [ ] Empty file is a no-op; already-set env vars still win
-- [ ] Env-var mode unchanged
-- [ ] Header comment in load-secrets documents the new variable
+- [x] File mode decodes identically to env mode
+- [x] Missing or unreadable file gives an error without printing values
+- [x] Empty file is a no-op; already-set env vars still win
+- [x] Env-var mode unchanged
+- [x] Header comment in load-secrets documents the new variable
 
 ## Implementation Plan
 
