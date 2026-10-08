@@ -1,5 +1,5 @@
 ---
-status: done
+status: in-progress
 related: clasi/issues/67-hide-ended-opportunities-at-view-time.md
 sprint: 039
 tickets:
@@ -9,6 +9,7 @@ tickets:
 - 039-004
 - 039-005
 - 039-006
+- 039-007
 ---
 
 # Build the site from the bucket and stop committing scraped data
