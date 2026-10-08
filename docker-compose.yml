@@ -1,0 +1,46 @@
+# Swarm stack file for the partner scraper (see scraper/docker/README.md).
+# Deploy by hand:
+#   TAG=<version> docker --context swarm1 stack deploy --with-registry-auth \
+#     -c docker-compose.yml stem-ecosystem
+x-league:
+  stack: stem-ecosystem
+
+services:
+  scraper:
+    image: ghcr.io/league-infrastructure/stem-ecosystem-scraper:${TAG:-latest}
+    build:
+      context: .
+      dockerfile: scraper/docker/Dockerfile
+    environment:
+      # The secrets bundle (base64 KEY=value lines) is read from this file.
+      SCRAPER_SECRETS_FILE: /run/secrets/stem-ecosystem_scraper_secrets
+    secrets:
+      - stem-ecosystem_scraper_secrets
+    volumes:
+      # Chromium needs more than Docker's 64 MB /dev/shm. Swarm ignores
+      # shm_size and does not support host IPC, so use a 1 GiB tmpfs.
+      - type: tmpfs
+        target: /dev/shm
+        tmpfs:
+          size: 1073741824
+    healthcheck:
+      # The container's job is the scheduler; healthy while supercronic runs.
+      test: ["CMD", "pgrep", "-x", "supercronic"]
+      interval: 60s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: any
+        delay: 10s
+      resources:
+        limits:
+          memory: 3G
+        reservations:
+          memory: 1G
+
+secrets:
+  stem-ecosystem_scraper_secrets:
+    external: true
