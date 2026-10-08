@@ -1,0 +1,10 @@
+# Schedule for supercronic. Times are America/Los_Angeles (CRON_TZ).
+# Jobs are spaced days apart so a long scrape cannot overlap the next job.
+CRON_TZ=America/Los_Angeles
+
+# scrape: Monday and Thursday 03:00
+0 3 * * 1,4 run-job scrape
+# teams: Wednesday 03:00
+0 3 * * 3 run-job teams
+# directory: Saturday 03:00
+0 3 * * 6 run-job directory

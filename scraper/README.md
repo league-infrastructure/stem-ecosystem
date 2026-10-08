@@ -49,6 +49,11 @@ site (`--site-dir` / `SITE_DIR`, default the current directory). From
 `scraper/` that is the repo root, so pass `--site-dir ..` (or set
 `SITE_DIR=..`).
 
+### Scheduled runs (container)
+
+Scheduled scraping runs from a Docker image with built-in cron; build, secrets,
+schedule, manual runs and logs are in [`docker/README.md`](docker/README.md).
+
 ### Configure
 
 Cache and published data live in the DigitalOcean Spaces bucket

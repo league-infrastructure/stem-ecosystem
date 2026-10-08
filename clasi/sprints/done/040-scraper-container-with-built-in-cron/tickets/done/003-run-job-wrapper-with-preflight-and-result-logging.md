@@ -1,9 +1,12 @@
 ---
 id: '003'
 title: run-job wrapper with preflight and result logging
-status: open
-use-cases: [SUC-003, SUC-004]
-depends-on: ['002']
+status: done
+use-cases:
+- SUC-003
+- SUC-004
+depends-on:
+- '002'
 github-issue: ''
 issue: 70-run-the-scraper-on-a-schedule-from-a-container-cron.md
 completes_issue: false
@@ -18,12 +21,12 @@ Add `scraper/docker/run-job`: `run-job scrape|teams|directory [extra args]`. Map
 
 ## Acceptance Criteria
 
-- [ ] Prints `<UTC ISO ts> START job=X` then `SUCCESS` or `FAILURE job=X exit=N duration=Ns`; exits with the job's status
-- [ ] Missing secrets: FAILURE line naming variable names only, partner-scrape not invoked, non-zero exit
-- [ ] Extra args pass through (e.g. `--source foo --dry-run --no-enrich`); with `--no-enrich`/`--dry-run` the ANTHROPIC_API_KEY requirement is waived for scrape; `--no-sponsors --no-descriptions` waive it for teams
-- [ ] Unknown job prints usage and exits 2
-- [ ] Secret values never appear in output
-- [ ] Tests with a stub `partner-scrape` on PATH cover success, failure exit code, missing secrets, pass-through, unknown job
+- [x] Prints `<UTC ISO ts> START job=X` then `SUCCESS` or `FAILURE job=X exit=N duration=Ns`; exits with the job's status
+- [x] Missing secrets: FAILURE line naming variable names only, partner-scrape not invoked, non-zero exit
+- [x] Extra args pass through (e.g. `--source foo --dry-run --no-enrich`); with `--no-enrich`/`--dry-run` the ANTHROPIC_API_KEY requirement is waived for scrape; `--no-sponsors --no-descriptions` waive it for teams
+- [x] Unknown job prints usage and exits 2
+- [x] Secret values never appear in output
+- [x] Tests with a stub `partner-scrape` on PATH cover success, failure exit code, missing secrets, pass-through, unknown job
 
 ## Implementation Plan
 
