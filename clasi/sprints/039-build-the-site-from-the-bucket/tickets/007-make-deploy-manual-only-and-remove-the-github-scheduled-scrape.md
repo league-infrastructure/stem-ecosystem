@@ -1,7 +1,7 @@
 ---
 id: '007'
 title: Make deploy manual-only and remove the GitHub scheduled scrape
-status: open
+status: done
 use-cases:
 - SUC-004
 depends-on:
@@ -28,10 +28,10 @@ Out of scope: the container cron (issue 70) and any rebuild cron.
 
 ## Acceptance Criteria
 
-- [ ] deploy.yml triggers are `workflow_dispatch` only
-- [ ] `scheduled-run.yml` is deleted and no live references remain (grep, excluding historical clasi sprint/issue docs)
-- [ ] scheduled-run.md, README.md and scraper/README.md updated as described
-- [ ] All edited workflow YAML parses
+- [x] deploy.yml triggers are `workflow_dispatch` only
+- [x] `scheduled-run.yml` is deleted and no live references remain (grep, excluding historical clasi sprint/issue docs)
+- [x] scheduled-run.md, README.md and scraper/README.md updated as described
+- [x] All edited workflow YAML parses
 
 ## Implementation Plan
 

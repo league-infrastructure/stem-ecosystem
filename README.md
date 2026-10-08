@@ -40,7 +40,7 @@ uv run partner-scrape --site-dir ..   # full run; --source <id> for one source, 
 uv run pytest                       # offline test suite
 ```
 
-`.github/workflows/scheduled-run.yml` runs the scraper weekly (Mondays 13:00 UTC).
+Scraping is not run by GitHub Actions (the scheduled workflow is retired); it will run from a container cron (see `clasi/issues/70-run-the-scraper-on-a-schedule-from-a-container-cron.md`).
 
 ## Where the data comes from
 
@@ -79,8 +79,7 @@ roster and silently drop partner geocodes and logos.
 
 ## Deployment
 
-**Production** — `.github/workflows/deploy.yml` builds and deploys to GitHub Pages on every
-push to `master`, fetching the data first (`npm run fetch-data`). It passes `--site` and `--base` from `actions/configure-pages`, so absolute
+**Production** — `.github/workflows/deploy.yml` builds and deploys to GitHub Pages **manually only** (Actions -> Deploy -> Run workflow, or `gh workflow run deploy.yml`); there is no push or scheduled trigger. It fetches the data first (`npm run fetch-data`). It passes `--site` and `--base` from `actions/configure-pages`, so absolute
 URLs in `llms.txt` and `/for-agents` derive from whatever origin actually serves the build
 (see `src/pages/llms.txt.ts`). Nothing hardcodes a domain.
 

@@ -1,9 +1,7 @@
 name: Deploy to GitHub Pages
 
+# Manual only: Actions -> Deploy -> Run workflow, or `gh workflow run deploy.yml`.
 on:
-  push:
-    branches: ['master']
-    paths-ignore: ['scraper/**']
   workflow_dispatch:
 
 # Allow one concurrent deployment

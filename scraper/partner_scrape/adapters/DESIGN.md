@@ -1009,8 +1009,8 @@ is an acceptable, correct answer rather than something to guess around.
 
 **Design Rationale: no new seasonal-recheck subsystem.**
 - *Decision*: Fleet's marketing page (and any other in-season-only camp page) is
-  registered `enabled = true` year-round; the existing weekly scheduled run
-  (`.github/workflows/scheduled-run.yml`) is the entire "recheck" mechanism.
+  registered `enabled = true` year-round; the recurring scheduled scrape
+  (formerly a GitHub workflow; now a container cron) is the entire "recheck" mechanism.
 - *Context*: the roadmap `sprint.md`'s Success Criteria asked for "a season-ahead view":
   a camp whose registration opens later should be "scheduled for a seasonal re-check
   rather than silently stale."
