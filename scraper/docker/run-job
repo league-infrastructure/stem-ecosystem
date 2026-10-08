@@ -1,0 +1,89 @@
+#!/usr/bin/env bash
+# Run one scraper job with secret preflight and timestamped result logging.
+#
+#   run-job scrape|teams|directory [extra partner-scrape args...]
+#
+# Log lines (stdout):
+#   <UTC ISO ts> START job=X
+#   <UTC ISO ts> SUCCESS job=X exit=0 duration=Ns
+#   <UTC ISO ts> FAILURE job=X exit=N duration=Ns
+#   <UTC ISO ts> FAILURE job=X missing=VAR1,VAR2        (preflight; not run)
+# Only variable names are ever logged, never values. Exits with the job's
+# status; 2 for usage errors; 1 for preflight failure.
+set -uo pipefail
+
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+ts() { date -u +%Y-%m-%dT%H:%M:%SZ; }
+
+usage() {
+  echo "usage: run-job scrape|teams|directory [extra args...]" >&2
+  exit 2
+}
+
+[ $# -ge 1 ] || usage
+job="$1"
+shift
+
+case "$job" in
+  scrape)
+    cmd=(partner-scrape)
+    required=(DO_SPACES_ACCESS_KEY DO_SPACES_SECRET_KEY ANTHROPIC_API_KEY LEAGUESYNC_API_KEY)
+    ;;
+  teams)
+    cmd=(partner-scrape teams)
+    required=(DO_SPACES_ACCESS_KEY DO_SPACES_SECRET_KEY ANTHROPIC_API_KEY TBA_KEY)
+    ;;
+  directory)
+    cmd=(partner-scrape directory)
+    required=(DO_SPACES_ACCESS_KEY DO_SPACES_SECRET_KEY)
+    ;;
+  *) usage ;;
+esac
+
+has_arg() {
+  local want="$1" a
+  shift
+  for a in "$@"; do [ "$a" = "$want" ] && return 0; done
+  return 1
+}
+
+# Waive ANTHROPIC_API_KEY where the job will not call the LLM.
+waive_anthropic=0
+case "$job" in
+  scrape)
+    if has_arg --no-enrich "$@" || has_arg --dry-run "$@"; then waive_anthropic=1; fi
+    ;;
+  teams)
+    if has_arg --no-sponsors "$@" && has_arg --no-descriptions "$@"; then waive_anthropic=1; fi
+    ;;
+esac
+
+echo "$(ts) START job=$job"
+SECONDS=0
+
+# shellcheck source=load-secrets
+if ! . "$here/load-secrets"; then
+  echo "$(ts) FAILURE job=$job exit=1 duration=${SECONDS}s"
+  exit 1
+fi
+
+missing=()
+for v in "${required[@]}"; do
+  if [ "$v" = ANTHROPIC_API_KEY ] && [ "$waive_anthropic" -eq 1 ]; then continue; fi
+  [ -n "${!v:-}" ] || missing+=("$v")
+done
+if [ "${#missing[@]}" -gt 0 ]; then
+  names="$(IFS=,; echo "${missing[*]}")"
+  echo "$(ts) FAILURE job=$job missing=$names"
+  exit 1
+fi
+
+"${cmd[@]}" "$@"
+rc=$?
+if [ "$rc" -eq 0 ]; then
+  echo "$(ts) SUCCESS job=$job exit=0 duration=${SECONDS}s"
+else
+  echo "$(ts) FAILURE job=$job exit=$rc duration=${SECONDS}s"
+fi
+exit "$rc"

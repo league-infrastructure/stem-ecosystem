@@ -2,6 +2,7 @@
 
 import base64
 import os
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -179,3 +180,107 @@ def test_shellcheck_clean():
         ["shellcheck", "-s", "bash", str(LOAD), str(MAKE)], capture_output=True, text=True
     )
     assert proc.returncode == 0, proc.stdout
+
+
+# ---------------------------------------------------------------- run-job
+
+RUN_JOB = DOCKER / "run-job"
+FAKE = {
+    "DO_SPACES_ACCESS_KEY": "fake-access",
+    "DO_SPACES_SECRET_KEY": "fake-secret",
+    "ANTHROPIC_API_KEY": "fake-anthropic",
+    "LEAGUESYNC_API_KEY": "fake-leaguesync",
+    "TBA_KEY": "fake-tba",
+}
+
+
+def run_job(tmp_path, args, env_keys=None, stub_exit=0):
+    """Run run-job with a stub partner-scrape on PATH; return (proc, argv_log)."""
+    bindir = tmp_path / "bin"
+    bindir.mkdir(exist_ok=True)
+    log = tmp_path / "argv.log"
+    stub = bindir / "partner-scrape"
+    stub.write_text(
+        f'#!/bin/sh\necho "$@" > "{log}"\necho STUB-OUT\nexit {stub_exit}\n'
+    )
+    stub.chmod(0o755)
+    env = {"PATH": f"{bindir}:{os.environ['PATH']}"}
+    for k in KEYS if env_keys is None else env_keys:
+        env[k] = FAKE[k]
+    proc = subprocess.run(
+        ["bash", str(RUN_JOB), *args], env=env, capture_output=True, text=True
+    )
+    return proc, (log.read_text().strip() if log.exists() else None)
+
+
+def test_run_job_success(tmp_path):
+    proc, argv = run_job(tmp_path, ["directory"])
+    assert proc.returncode == 0
+    lines = proc.stdout.splitlines()
+    assert re.match(r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ START job=directory$", lines[0])
+    assert re.search(r"SUCCESS job=directory exit=0 duration=\d+s$", proc.stdout)
+    assert argv == "directory"
+
+
+def test_run_job_failure_exit_code(tmp_path):
+    proc, _ = run_job(tmp_path, ["teams"], stub_exit=3)
+    assert proc.returncode == 3
+    assert re.search(r"FAILURE job=teams exit=3 duration=\d+s", proc.stdout)
+
+
+def test_run_job_missing_secrets(tmp_path):
+    proc, argv = run_job(tmp_path, ["scrape"], env_keys=["DO_SPACES_ACCESS_KEY"])
+    assert proc.returncode != 0
+    assert argv is None
+    assert (
+        "FAILURE job=scrape missing=DO_SPACES_SECRET_KEY,ANTHROPIC_API_KEY,LEAGUESYNC_API_KEY"
+        in proc.stdout
+    )
+    assert "fake-access" not in proc.stdout + proc.stderr
+
+
+def test_run_job_passthrough_and_waivers(tmp_path):
+    keys = ["DO_SPACES_ACCESS_KEY", "DO_SPACES_SECRET_KEY", "LEAGUESYNC_API_KEY"]
+    proc, argv = run_job(
+        tmp_path, ["scrape", "--source", "foo", "--dry-run", "--no-enrich"], keys
+    )
+    assert proc.returncode == 0
+    assert argv == "--source foo --dry-run --no-enrich"
+    # --dry-run alone also waives
+    proc, _ = run_job(tmp_path, ["scrape", "--dry-run"], keys)
+    assert proc.returncode == 0
+    # without flags the key is required
+    proc, argv = run_job(tmp_path, ["scrape"], keys)
+    assert proc.returncode != 0 and "missing=ANTHROPIC_API_KEY" in proc.stdout
+
+    tkeys = ["DO_SPACES_ACCESS_KEY", "DO_SPACES_SECRET_KEY", "TBA_KEY"]
+    proc, argv = run_job(
+        tmp_path, ["teams", "--no-sponsors", "--no-descriptions"], tkeys
+    )
+    assert proc.returncode == 0
+    assert argv == "teams --no-sponsors --no-descriptions"
+    proc, _ = run_job(tmp_path, ["teams", "--no-sponsors"], tkeys)
+    assert proc.returncode != 0
+
+
+def test_run_job_unknown_job(tmp_path):
+    for args in (["bogus"], []):
+        proc, argv = run_job(tmp_path, args)
+        assert proc.returncode == 2
+        assert "usage:" in proc.stderr
+        assert argv is None
+
+
+def test_run_job_uses_secrets_bundle(tmp_path):
+    bindir = tmp_path / "bin"
+    bindir.mkdir(exist_ok=True)
+    stub = bindir / "partner-scrape"
+    stub.write_text('#!/bin/sh\necho "$DO_SPACES_ACCESS_KEY"\n')
+    stub.chmod(0o755)
+    bundle = b64("DO_SPACES_ACCESS_KEY=fake-access\nDO_SPACES_SECRET_KEY=fake-secret\n")
+    env = {"PATH": f"{bindir}:{os.environ['PATH']}", "SCRAPER_SECRETS_B64": bundle}
+    proc = subprocess.run(
+        ["bash", str(RUN_JOB), "directory"], env=env, capture_output=True, text=True
+    )
+    assert proc.returncode == 0
+    assert "SUCCESS" in proc.stdout
