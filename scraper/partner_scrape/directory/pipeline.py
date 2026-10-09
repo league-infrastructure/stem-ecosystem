@@ -61,7 +61,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from partner_scrape.config import get_site_dir
+from partner_scrape.partners.source import resolve_partners
 from partner_scrape.directory.export import export_directory
 from partner_scrape.directory.model import Club, Offering, Place
 from partner_scrape.directory.sources.base import (
@@ -261,26 +261,18 @@ def _check_related_partner_references(
     same generic `(referencer_id, partner_id)` shape
     `check_partner_references()` already takes) and returning early
     when it is empty means a `directory`-only environment with no
-    sibling `stem-ecosystem` checkout's `partners.json` still runs
+    partner records still runs
     cleanly when neither a `Place` nor an `Offering` references one --
     this is the one behavioral difference from ticket 003's
     unconditional read.
 
-    When at least one reference exists, `site_dir` is resolved
-    identically to `export.export_directory()`'s own resolution (`Path
-    (site_dir) if site_dir is not None else get_site_dir()`) -- no
-    independent, potentially-divergent resolution logic -- and
-    `check_partner_references()` is left to raise
-    `RosterValidationError` uncaught: a fatal, structural problem, not
-    per-source isolated (contrast with `run_directory()`'s own
-    try/except-and-continue for a flaky third-party fetch, which a
-    hand-copy typo in a curated, small dataset is not).
-
-    A missing `partners.json` when references exist is re-raised as a
-    `RuntimeError` with an actionable message, matching
-    `export_directory()`'s and `publish.project()`'s own "site_dir does
-    not exist, check --site-dir" message convention -- never a bare,
-    unexplained `FileNotFoundError`.
+    When at least one reference exists the roster is read from the data
+    store's partner records (sprint 042; `site_dir` no longer locates it,
+    the parameter is kept for caller compatibility) and
+    `check_partner_references()` is left to raise `RosterValidationError`
+    uncaught: a fatal, structural problem, not per-source isolated. An
+    empty/unreadable roster raises `RuntimeError` with an actionable
+    message from `partners.source.resolve_partners`.
     """
     references = [
         (place.place_id, place.related_partner_id)
@@ -294,17 +286,9 @@ def _check_related_partner_references(
     if not references:
         return
 
-    resolved_site_dir = Path(site_dir) if site_dir is not None else get_site_dir()
-    partners_path = resolved_site_dir / "src" / "data" / "partners.json"
-
-    try:
-        raw_partners = json.loads(partners_path.read_text(encoding="utf-8"))
-    except OSError as exc:
-        raise RuntimeError(
-            f"Cannot read {partners_path} to validate related_partner_id "
-            f"references: {exc}. Check --site-dir or SITE_DIR, and that "
-            "the sibling site checkout's src/data/partners.json is present."
-        ) from exc
+    # The roster is the data store's partner records (sprint 042);
+    # `site_dir` no longer locates it.
+    raw_partners = resolve_partners()
 
     check_partner_references(references, raw_partners)
 
@@ -334,14 +318,9 @@ def run_directory(
             `"static_roster"`, `"club_static_roster"`, or
             `"offering_static_roster"`) -- mirrors
             `teams.pipeline.run_teams()`'s own `source` parameter.
-        site_dir: sibling `stem-ecosystem` checkout. No longer forwarded
-            into `export_directory()` (sprint 025 ticket 005 removed
-            that write target -- see `directory/export.py`'s own
-            docstring); still used by
-            `_check_related_partner_references()`'s `partners.json`
-            read for the `related_partner_id` join-integrity check.
-            Defaults to `Config.get_site_dir()` when omitted (via
-            `_check_related_partner_references()`).
+        site_dir: unused since sprint 042 (the roster for the
+            `related_partner_id` check is the data store's partner
+            records); kept for caller compatibility.
         fetcher: the `Fetcher` every active source retrieves raw
             content through. Defaults to a real `PoliteFetcher()` when
             omitted -- the production path, even though every source
@@ -374,8 +353,8 @@ def run_directory(
             run sets `related_partner_id` at all; `partners.json` is
             not even read in that case.
         RuntimeError: at least one `Place` or `Offering` has a
-            non-`None` `related_partner_id` and `partners.json` cannot
-            be read at the resolved `site_dir`.
+            non-`None` `related_partner_id` and the data store's
+            partner records cannot be read (or are empty).
     """
     sources = load_active_sources(
         Path(registry_dir) if registry_dir is not None else DEFAULT_PLACES_REGISTRY_DIR

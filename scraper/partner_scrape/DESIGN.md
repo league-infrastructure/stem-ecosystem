@@ -267,7 +267,7 @@ saved HTML/JSON fixtures under `tests/fixtures/`, no network, no API key require
   `teams/DESIGN.md`.
 
 ### Consumes
-- **`stem-ecosystem`'s `src/data/partners.json`** — read-only, for the partner join.
+- **The partner roster** — since sprint 042 the per-partner records in the data store (`partners/<slug>/partner.json`, see `partners/DESIGN.md`), read for the partner join; no longer `stem-ecosystem`'s `src/data/partners.json`.
 - **Environment** (via `config.py` only): `SCRAPE_CACHE_DIR`, `PARTNER_SCRAPE_DATA_DIR`, `PARTNER_SCRAPE_REGISTRY_DIR`, `PARTNER_SCRAPE_EVENT_DB`, `DO_SPACES_*` (sprint 038), `SITE_DIR`,
   `LEAGUESYNC_API_KEY`, `LEAGUESYNC_URL`, and (sprint 011) `TBA_KEY`/`TBA_URL`; and
   `ANTHROPIC_API_KEY`, resolved by the `anthropic` SDK itself.

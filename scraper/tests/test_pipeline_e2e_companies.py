@@ -27,6 +27,7 @@ from pathlib import Path
 
 import pytest
 
+from tests.roster_seed import seed_roster, seed_roster_file
 from partner_scrape.adapters.greenhouse import DEFAULT_API_BASE as GREENHOUSE_API_BASE
 from partner_scrape.adapters.lever import DEFAULT_API_BASE as LEVER_API_BASE
 from partner_scrape.fetch.fetcher import FetchResponse
@@ -102,12 +103,12 @@ def _fixture_fetcher() -> FixtureFetcher:
 
 def _site_dir(tmp_path: Path) -> Path:
     """A tmp_path-backed stand-in for the sibling stem-ecosystem repo,
-    with `src/data/partners.json` seeded from the shared fixture --
+    with the roster seeded into the data store from the shared fixture --
     never a real stem-ecosystem checkout."""
     site_dir = tmp_path / "stem-ecosystem"
-    data_dir = site_dir / "src" / "data"
-    data_dir.mkdir(parents=True)
-    shutil.copy(PARTNERS_FIXTURE, data_dir / "partners.json")
+    site_dir.mkdir(parents=True)
+    # The roster lives in the data store now (sprint 042), not site_dir.
+    seed_roster_file(PARTNERS_FIXTURE)
     return site_dir
 
 

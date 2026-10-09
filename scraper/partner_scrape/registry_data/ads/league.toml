@@ -9,11 +9,12 @@
 # ... is a different concern from what's literally published on their
 # site").
 #
-# logo_src reuses stem-ecosystem's existing partners.json entry (id 287,
-# "The LEAGUE of Amazing Programmers") logo filename, so the ad and the
-# partner listing stay visually consistent.
+# logo_src is the bucket path of the League partner's own logo
+# (data/partners/<slug>/logo.<ext>), so the ad and the partner listing stay
+# visually consistent. The site's fetch-data rewrites it to the fetched
+# public/images/logos/<slug>.<ext> filename.
 
 headline = "Give Your Kid a Head Start in Code"
 body = "The LEAGUE of Amazing Programmers teaches real Java programming to San Diego County kids in grades 5-12 through after-school classes and camps -- building toward an industry-recognized certification, not just a coding intro. Enroll today at jointheleague.org."
 link = "https://www.jointheleague.org/"
-logo_src = "the_league_of_amazing.png"
+logo_src = "partners/the_league_of_amazing_programmers/logo.png"

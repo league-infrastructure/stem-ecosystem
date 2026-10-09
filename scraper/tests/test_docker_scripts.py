@@ -248,14 +248,27 @@ FAKE = {
 }
 
 
-def run_job(tmp_path, args, env_keys=None, stub_exit=0):
-    """Run run-job with a stub partner-scrape on PATH; return (proc, argv_log)."""
+def run_job(tmp_path, args, env_keys=None, stub_exit=0, upload_exit=0):
+    """Run run-job with a stub partner-scrape on PATH; return (proc, argv_log).
+
+    The stub records `logs upload` calls (and the uploaded file's content) in
+    ``tmp_path/upload.log`` and exits ``upload_exit`` for them."""
     bindir = tmp_path / "bin"
     bindir.mkdir(exist_ok=True)
     log = tmp_path / "argv.log"
     stub = bindir / "partner-scrape"
     stub.write_text(
-        f'#!/bin/sh\necho "$@" > "{log}"\necho STUB-OUT\nexit {stub_exit}\n'
+        '#!/bin/sh\n'
+        'if [ "$1" = logs ]; then\n'
+        f'  echo "$@" > "{tmp_path}/upload.args"\n'
+        '  while [ $# -gt 0 ]; do [ "$1" = --file ] && f="$2"; shift; done\n'
+        f'  cp "$f" "{tmp_path}/upload.content"\n'
+        f'  exit {upload_exit}\n'
+        'fi\n'
+        f'echo "$@" > "{log}"\n'
+        'echo STUB-OUT\n'
+        'echo "leak: $DO_SPACES_SECRET_KEY" >&2\n'
+        f'exit {stub_exit}\n'
     )
     stub.chmod(0o755)
     env = {"PATH": f"{bindir}:{os.environ['PATH']}"}
@@ -274,6 +287,43 @@ def test_run_job_success(tmp_path):
     assert re.match(r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ START job=directory$", lines[0])
     assert re.search(r"SUCCESS job=directory exit=0 duration=\d+s$", proc.stdout)
     assert argv == "directory"
+
+
+def test_run_job_uploads_log_on_success(tmp_path):
+    proc, _ = run_job(tmp_path, ["directory"])
+    assert proc.returncode == 0
+    args = (tmp_path / "upload.args").read_text()
+    assert "--job directory" in args and "--exit-code 0" in args
+    content = (tmp_path / "upload.content").read_text()
+    assert "START job=directory" in content
+    assert "STUB-OUT" in content
+    assert "SUCCESS job=directory" in content
+    assert "STUB-OUT" in proc.stdout  # still reaches docker logs
+
+
+def test_run_job_uploads_log_on_failure(tmp_path):
+    proc, _ = run_job(tmp_path, ["teams"], stub_exit=3)
+    assert proc.returncode == 3
+    assert "--exit-code 3" in (tmp_path / "upload.args").read_text()
+    assert "FAILURE job=teams exit=3" in (tmp_path / "upload.content").read_text()
+
+
+def test_run_job_uploads_log_on_preflight_failure(tmp_path):
+    proc, argv = run_job(tmp_path, ["scrape"], env_keys=["DO_SPACES_ACCESS_KEY"])
+    assert proc.returncode == 1
+    assert argv is None
+    assert "--job scrape" in (tmp_path / "upload.args").read_text()
+    assert "--exit-code 1" in (tmp_path / "upload.args").read_text()
+    assert "missing=" in (tmp_path / "upload.content").read_text()
+
+
+def test_run_job_upload_failure_keeps_exit_code(tmp_path):
+    proc, _ = run_job(tmp_path, ["teams"], stub_exit=3, upload_exit=9)
+    assert proc.returncode == 3
+    assert "log upload failed" in proc.stdout
+    proc, _ = run_job(tmp_path, ["directory"], upload_exit=9)
+    assert proc.returncode == 0
+    assert "log upload failed" in proc.stdout
 
 
 def test_run_job_failure_exit_code(tmp_path):

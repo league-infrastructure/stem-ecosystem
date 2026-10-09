@@ -43,7 +43,7 @@ import logging
 import sys
 from pathlib import Path
 
-from partner_scrape.config import get_data_store, get_site_dir
+from partner_scrape.config import get_data_store
 from partner_scrape.export import publish
 from partner_scrape.export.schema_doc import publish_schema_doc
 from partner_scrape.enrich.cache import EnrichmentCache
@@ -105,10 +105,10 @@ def _build_parser() -> argparse.ArgumentParser:
         type=Path,
         default=None,
         help=(
-            "Sibling stem-ecosystem checkout to read partners.json from "
-            "(default: $SITE_DIR, else the current directory). Read-only as of "
-            "sprint 025 -- opportunities.json/scrape-meta.json/images are "
-            "written to partner-scrape's own data/ directory, never here."
+            "Sibling stem-ecosystem checkout. Unused for the partner roster "
+            "since sprint 042 (it is read from the data store's "
+            "partners/<slug>/partner.json; see PARTNER_SCRAPE_DATA_DIR) -- "
+            "kept for compatibility. Nothing is written here."
         ),
     )
     parser.add_argument(
@@ -182,8 +182,43 @@ def _build_parser() -> argparse.ArgumentParser:
     _add_discover_candidates_subcommand(subparsers)
     _add_teams_subcommand(subparsers)
     _add_directory_subcommand(subparsers)
+    _add_logs_subcommand(subparsers)
+    _add_partners_subcommand(subparsers)
 
     return parser
+
+
+def _add_logs_subcommand(subparsers: argparse._SubParsersAction) -> None:
+    parser = subparsers.add_parser(
+        "logs", help="Run-log capture (used by docker/run-job)."
+    )
+    sub = parser.add_subparsers(dest="logs_command", required=True)
+    up = sub.add_parser("upload", help="Upload a run log and append logs/index.jsonl.")
+    up.add_argument("--job", required=True)
+    up.add_argument("--file", required=True, help="Captured output file.")
+    up.add_argument("--start", required=True, help="UTC ISO start timestamp.")
+    up.add_argument("--end", required=True, help="UTC ISO end timestamp.")
+    up.add_argument("--exit-code", type=int, required=True)
+    up.add_argument("--duration", type=int, required=True, help="Seconds.")
+
+
+def _run_logs(args: argparse.Namespace) -> int:
+    from pathlib import Path
+
+    from partner_scrape.config import get_logs_store
+    from partner_scrape.logs import upload_log
+
+    key = upload_log(
+        get_logs_store(),
+        job=args.job,
+        log_file=Path(args.file),
+        start=args.start,
+        end=args.end,
+        exit_code=args.exit_code,
+        duration=args.duration,
+    )
+    print(f"partner-scrape logs: uploaded logs/{key}")
+    return 0
 
 
 def _add_discover_candidates_subcommand(subparsers: argparse._SubParsersAction) -> None:
@@ -351,12 +386,10 @@ def _add_directory_subcommand(subparsers: argparse._SubParsersAction) -> None:
         type=Path,
         default=None,
         help=(
-            "Sibling stem-ecosystem checkout to read partners.json from, "
-            "for the related-partner-reference join-integrity check only "
-            "(default: $SITE_DIR, else the current directory) -- same default "
-            "as the `run` command's --site-dir. Read-only: places.json/ "
-            "clubs.json/offerings.json are always written to "
-            "partner-scrape's own data/ directory, never here."
+            "Unused since sprint 042 (the related-partner-reference check "
+            "reads the data store's partner records); kept for "
+            "compatibility. places.json/clubs.json/offerings.json are "
+            "always written to partner-scrape's own data/ directory."
         ),
     )
     parser.add_argument(
@@ -486,6 +519,164 @@ def _run_discover_candidates(args: argparse.Namespace) -> int:
     return 0
 
 
+def _default_actor() -> str:
+    import getpass
+    import os
+
+    return f"person:{os.environ.get('USER') or getpass.getuser()}"
+
+
+def _add_partners_subcommand(subparsers: argparse._SubParsersAction) -> None:
+    parser = subparsers.add_parser(
+        "partners", help="Partner records in the bucket (data/partners/<slug>/)."
+    )
+    sub = parser.add_subparsers(dest="partners_command", required=True)
+    get = sub.add_parser("get", help="Print a partner record as JSON.")
+    get.add_argument("slug")
+    put = sub.add_parser("put", help="Validate and write a partner record from a file.")
+    put.add_argument("slug")
+    put.add_argument("file", help="JSON file holding the record.")
+    add = sub.add_parser("add", help="Create a new partner (assigns slug and next id).")
+    add.add_argument("--name", required=True)
+    add.add_argument("--file", help="Optional JSON file with other record fields.")
+    sub.add_parser(
+        "consolidate", help="Validate all records and write data/partners.json."
+    )
+    mig = sub.add_parser(
+        "migrate",
+        help="One-time import: split src/data/partners.json + logos into the "
+        "bucket, copy cache/partner_log to history/partner_log.",
+    )
+    mig.add_argument("--site-dir", type=Path, default=None, help="Site checkout (default $SITE_DIR or cwd).")
+    mig.add_argument("--dry-run", action="store_true", help="Report only; write nothing.")
+    ver = sub.add_parser(
+        "verify-migration",
+        help="Compare consolidated records with a baseline roster (ignoring logo_src).",
+    )
+    ver.add_argument(
+        "--baseline", required=True,
+        help="Baseline roster JSON file, or '-' for stdin (git show HEAD:src/data/partners.json).",
+    )
+    for p in (put, add):
+        p.add_argument(
+            "--by", default=None, help="Actor recorded in history (default person:$USER)."
+        )
+
+
+def _run_partners(args: argparse.Namespace) -> int:
+    import json
+    import sys
+    from pathlib import Path
+
+    from partner_scrape import config
+    from partner_scrape.model import slugify
+    from partner_scrape.partners.consolidate import consolidate
+    from partner_scrape.partners.records import (
+        check_slug,
+        list_slugs,
+        read_record,
+        read_record_file_safe,
+    )
+    from partner_scrape.partners.writer import PartnerWriter
+    from partner_scrape.registry.validate_roster import (
+        RosterValidationError,
+        validate_records,
+    )
+
+    def fail(msg: str) -> int:
+        print(f"partner-scrape partners: {msg}", file=sys.stderr)
+        return 1
+
+    cmd = args.partners_command
+    data = config.get_data_store()
+    try:
+        if cmd == "get":
+            rec = read_record(data, args.slug)
+            if rec is None:
+                return fail(f"no record for slug {args.slug!r}")
+            print(json.dumps(rec, indent=1, ensure_ascii=False))
+            return 0
+
+        if cmd == "migrate":
+            from partner_scrape.partners.migrate import MigrationError, migrate
+
+            site = args.site_dir or config.get_site_dir()
+            try:
+                report = migrate(
+                    site, data, config.get_history_store(),
+                    config.get_scrape_cache_store(), dry_run=args.dry_run,
+                )
+            except MigrationError as exc:
+                print(exc, file=sys.stderr)
+                return fail("migration refused; nothing was written")
+            print("\n".join(report.lines()))
+            return 0
+
+        if cmd == "verify-migration":
+            from partner_scrape.partners.migrate import (
+                MigrationError,
+                load_roster_file,
+                verify_migration,
+            )
+
+            if args.baseline == "-":
+                text = sys.stdin.read()
+                baseline = json.loads(text)
+                baseline = baseline["partners"] if isinstance(baseline, dict) else baseline
+            else:
+                try:
+                    baseline = load_roster_file(Path(args.baseline))
+                except MigrationError as exc:
+                    return fail(str(exc))
+            diffs, notes = verify_migration(data, baseline)
+            for n in notes:
+                print(f"NOTE {n}")
+            if diffs:
+                for d in diffs:
+                    print(f"DIFF {d}", file=sys.stderr)
+                return fail(f"verification FAILED: {len(diffs)} difference(s)")
+            print(f"partner-scrape partners: verification OK ({len(baseline)} partners identical apart from logo_src)")
+            return 0
+
+        if cmd == "consolidate":
+            envelope = consolidate(data)
+            print(f"partner-scrape partners: wrote partners.json ({envelope['partner_count']} partners)")
+            return 0
+
+        writer = PartnerWriter(data, config.get_history_store())
+        actor = args.by or _default_actor()
+        if cmd == "put":
+            record = read_record_file_safe(Path(args.file))
+            record.setdefault("slug", args.slug)
+            check_slug(args.slug)
+            if record["slug"] != args.slug:
+                return fail(
+                    f"record slug {record['slug']!r} does not match {args.slug!r}"
+                )
+            slug = args.slug
+        else:  # add
+            record = read_record_file_safe(Path(args.file)) if args.file else {}
+            record["name"] = args.name
+            slug = check_slug(slugify(args.name))
+            existing = list_slugs(data)
+            if slug in existing:
+                return fail(f"slug {slug!r} already exists")
+            ids = [
+                (read_record(data, s) or {}).get("id") for s in existing
+            ]
+            record["id"] = max([i for i in ids if isinstance(i, int)] or [0]) + 1
+            record["slug"] = slug
+        validate_records([record])
+        entry = writer.put_record(slug, record, actor)
+        print(
+            f"partner-scrape partners: {cmd} {slug}: "
+            + ("unchanged" if entry is None else "written")
+        )
+        return 0
+    except (RosterValidationError, ValueError, OSError) as exc:
+        return fail(str(exc))
+
+
 def main(argv: list[str] | None = None) -> int:
     """CLI entry point. Returns the process exit code."""
     parser = _build_parser()
@@ -499,6 +690,12 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "directory":
         return _run_directory(args)
+
+    if args.command == "logs":
+        return _run_logs(args)
+
+    if args.command == "partners":
+        return _run_partners(args)
 
     logging.basicConfig(
         level=logging.INFO if args.verbose else logging.WARNING,
@@ -586,12 +783,14 @@ def main(argv: list[str] | None = None) -> int:
     # exit code below instead.
     publish_failed = False
     if not args.dry_run:
-        publish_site_dir = args.site_dir if args.site_dir is not None else get_site_dir()
         try:
-            publish.project(
-                site_dir=publish_site_dir,
-                partners_path=publish_site_dir / "src" / "data" / "partners.json",
-            )
+            publish.project(site_dir=args.site_dir)
+            # Sprint 042 ticket 004: partners.json is composed from the
+            # per-partner records (not hand-built by publish.project).
+            # Same failure isolation as project(): logged, non-zero exit.
+            from partner_scrape.partners.consolidate import consolidate
+
+            consolidate(get_data_store())
         except Exception:
             publish_failed = True
             logger.exception(

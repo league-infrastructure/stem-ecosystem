@@ -67,6 +67,12 @@ SCRAPE_CACHE_DIR_ENV_VAR = "SCRAPE_CACHE_DIR"
 #: local directory only when set explicitly.
 PARTNER_SCRAPE_DATA_DIR_ENV_VAR = "PARTNER_SCRAPE_DATA_DIR"
 
+#: Environment variable for the run-logs location (private; see logs.py).
+PARTNER_SCRAPE_LOGS_DIR_ENV_VAR = "PARTNER_SCRAPE_LOGS_DIR"
+
+#: Default run-logs location -- ``logs/`` at the bucket root.
+DEFAULT_LOGS_LOCATION = "s3://jtl-stem-ecosystem-scrape/logs"
+
 #: Default cache location -- the DigitalOcean Spaces bucket. A local
 #: ``SCRAPE_CACHE_DIR`` is used only when set explicitly.
 DEFAULT_CACHE_LOCATION = "s3://jtl-stem-ecosystem-scrape/cache"
@@ -461,7 +467,8 @@ def _get_s3_client() -> Any:
             f"{', '.join(missing)} not set, but an s3:// location is in "
             "effect. Set them in the assembled .env (see "
             "config/prod/public.env and secrets.env), or point "
-            f"{SCRAPE_CACHE_DIR_ENV_VAR}/{PARTNER_SCRAPE_DATA_DIR_ENV_VAR} at "
+            f"{SCRAPE_CACHE_DIR_ENV_VAR}/{PARTNER_SCRAPE_DATA_DIR_ENV_VAR}/"
+                "PARTNER_SCRAPE_HISTORY_DIR at "
             "a local directory to run without the bucket."
         )
     endpoint = _validate_endpoint(values[DO_SPACES_ENDPOINT_ENV_VAR])
@@ -514,6 +521,14 @@ def get_data_store() -> Store:
     )
 
 
+def get_logs_store() -> Store:
+    """Return the Store for run logs (``logs/``). Always private: never
+    ``public_read``, unlike the data store."""
+    return _store_for(
+        PARTNER_SCRAPE_LOGS_DIR_ENV_VAR, DEFAULT_LOGS_LOCATION, public_read=False
+    )
+
+
 def resolve_data_store(location: str | Path | Store | None = None) -> Store:
     """Return the data Store for an export function's ``own_data_dir``
     argument.
@@ -529,3 +544,18 @@ def resolve_data_store(location: str | Path | Store | None = None) -> Store:
         client = _get_s3_client() if text.startswith("s3://") else None
         return store_from_location(location, client, public_read=True)
     return location
+
+
+#: Environment variable for the partner-history location (private).
+PARTNER_SCRAPE_HISTORY_DIR_ENV_VAR = "PARTNER_SCRAPE_HISTORY_DIR"
+
+#: Default history location -- ``history/`` at the bucket root.
+DEFAULT_HISTORY_LOCATION = "s3://jtl-stem-ecosystem-scrape/history"
+
+
+def get_history_store() -> Store:
+    """Return the Store for ``history/`` (record/logo archives, change log).
+    Always private: never ``public_read``, unlike the data store."""
+    return _store_for(
+        PARTNER_SCRAPE_HISTORY_DIR_ENV_VAR, DEFAULT_HISTORY_LOCATION, public_read=False
+    )

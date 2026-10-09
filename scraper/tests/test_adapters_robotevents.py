@@ -449,7 +449,7 @@ class TestPipelineRunSurvivesAMissingToken:
     def test_missing_robotevents_key_still_completes_and_reports_the_healthy_source(
         self, tmp_path, monkeypatch
     ):
-        import shutil
+        from tests.roster_seed import seed_roster_file
 
         from partner_scrape.adapters.leaguesync import CLASSES_SQL, TECH_CLUBS_SQL, _query_url
         from partner_scrape.pipeline import run as run_pipeline
@@ -463,12 +463,8 @@ class TestPipelineRunSurvivesAMissingToken:
         # from the shared fixture, matching test_pipeline_e2e.py's own
         # `_site_dir()` helper exactly (not the real stem-ecosystem data).
         site_dir = tmp_path / "site"
-        data_dir = site_dir / "src" / "data"
-        data_dir.mkdir(parents=True)
-        shutil.copy(
-            Path(__file__).resolve().parent / "fixtures" / "partners.json",
-            data_dir / "partners.json",
-        )
+        site_dir.mkdir(parents=True)
+        seed_roster_file(Path(__file__).resolve().parent / "fixtures" / "partners.json")
 
         registry_dir = tmp_path / "registry"
         registry_dir.mkdir()

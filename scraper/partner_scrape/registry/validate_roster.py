@@ -196,7 +196,8 @@ def _hijacked_domain_offenders(partners: list[dict[str, Any]]) -> list[str]:
 
 
 def _duplicate_slug_offenders(partners: list[dict[str, Any]]) -> list[str]:
-    """Group `partners` by `model.slugify(name)` over the **raw** list
+    """Group `partners` by their stored `slug` (falling back to
+    `model.slugify(name)` for legacy rows without one) over the **raw** list
     passed in -- the caller (`validate_roster`) never passes a
     deduplicated view, which is exactly what makes this check able to
     catch issue 46's failure mode at all (see module docstring).
@@ -204,7 +205,7 @@ def _duplicate_slug_offenders(partners: list[dict[str, Any]]) -> list[str]:
     that group, not just the first pair."""
     rows_by_slug: dict[str, list[dict[str, Any]]] = {}
     for partner in partners:
-        slug = slugify(partner.get("name", ""))
+        slug = partner.get("slug") or slugify(partner.get("name", ""))
         rows_by_slug.setdefault(slug, []).append(partner)
 
     offenders: list[str] = []
@@ -341,3 +342,31 @@ def check_partner_references(
         "partner_id pairs do not resolve against any real partners.json id. "
         f"Check that each referencer's related_partner_id is correct:\n  {offenders}"
     )
+
+
+def validate_records(records: list[dict[str, Any]]) -> None:
+    """Validate partner *records* (dicts already in memory, e.g. read from
+    ``data/partners/<slug>/partner.json``) rather than a roster file.
+
+    Runs :func:`validate_roster` over the whole list. On failure the raised
+    :class:`RosterValidationError` additionally names the offending record
+    slugs, found by re-validating each record on its own (so a bad record is
+    identified by slug, not only by id/name) plus any shared-slug clash.
+    """
+    try:
+        validate_roster(records)
+    except RosterValidationError as exc:
+        bad: list[str] = []
+        for rec in records:
+            try:
+                validate_roster([rec])
+            except RosterValidationError:
+                bad.append(str(rec.get("slug") or _row_ident(rec)))
+        if not bad:  # cross-record problem (duplicate slugs)
+            seen: dict[str, int] = {}
+            for rec in records:
+                s = str(rec.get("slug"))
+                seen[s] = seen.get(s, 0) + 1
+            bad = sorted(s for s, n in seen.items() if n > 1)
+        head = "Invalid partner record(s): " + ", ".join(bad or ["<unknown>"])
+        raise RosterValidationError(f"{head}\n{exc}") from exc

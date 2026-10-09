@@ -9,5 +9,4 @@
 !scraper/docker/run-job
 !scraper/docker/load-secrets
 !scraper/docker/crontab
-!src/data/partners.json
 **/__pycache__
