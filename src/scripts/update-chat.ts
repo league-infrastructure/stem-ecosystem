@@ -1,5 +1,5 @@
 // DOM glue for /update chat mode. All server text is rendered with
-// textContent (never innerHTML). Logic lives in src/lib/updates/*.
+// textContent (no HTML parsing). Logic lives in src/lib/updates/*.
 import { createApiClient, describeError, DEFAULT_FALLBACK_EMAIL } from '../lib/updates/api-client.mjs';
 import { formatHints, hintLine, hintsDiffer } from '../lib/updates/hints-view.mjs';
 
