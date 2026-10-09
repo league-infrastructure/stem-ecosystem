@@ -37,7 +37,14 @@ then requires token Jaccard >= 0.8.
 
 **Liveness** is an injected `link_checker(url) -> True|False|None`;
 `fetcher_link_checker(PoliteFetcher)` is the production one (GET; dead =
-exception, 404 or 410; 403/429/999 bot walls are not dead). Only run for a
+an actual HTTP 404 or 410 only. Exceptions, `RobotsDisallowed`, timeouts,
+transport errors and 403/429/999/5xx are unknown, `None`. Unknown never sets
+`Flag.dead` and never yields `social_dead`/"(record link is dead)". The social
+hosts facebook/fb/instagram/twitter/x/linkedin are never fetched and always
+unknown: they disallow crawlers in robots.txt and serve logged-out bots login
+redirects or fake 404s, so no plain-fetch signal is reliable. Dead-link
+replacement for those networks therefore goes to needs_review (043-011
+follow-up).) Only run for a
 record link that does not match the site's. Snapshots hold no page bodies;
 ticket 005 reads bodies from the fetch cache.
 
@@ -75,7 +82,7 @@ never change; URL/email/phone shape; `validate_records([candidate])`.
 - fill an EMPTY phone / email / social field;
 - replace a NON-EMPTY social link with a same-network link only when the current
   value is on the wrong network's domain, or the link checker reported it dead
-  (404/410/exception; `Flag.dead` on `social_changed`/`social_dead`, so the
+  (an actual 404/410 on a non-social host; `Flag.dead` on `social_changed`/`social_dead`, so the
   policy does no network I/O). Without a link checker (`--no-llm`) the dead
   condition cannot fire (043-011);
 - website: only with a `website_moved` flag, proposed host == the snapshot's
