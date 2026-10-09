@@ -182,8 +182,42 @@ def _build_parser() -> argparse.ArgumentParser:
     _add_discover_candidates_subcommand(subparsers)
     _add_teams_subcommand(subparsers)
     _add_directory_subcommand(subparsers)
+    _add_logs_subcommand(subparsers)
 
     return parser
+
+
+def _add_logs_subcommand(subparsers: argparse._SubParsersAction) -> None:
+    parser = subparsers.add_parser(
+        "logs", help="Run-log capture (used by docker/run-job)."
+    )
+    sub = parser.add_subparsers(dest="logs_command", required=True)
+    up = sub.add_parser("upload", help="Upload a run log and append logs/index.jsonl.")
+    up.add_argument("--job", required=True)
+    up.add_argument("--file", required=True, help="Captured output file.")
+    up.add_argument("--start", required=True, help="UTC ISO start timestamp.")
+    up.add_argument("--end", required=True, help="UTC ISO end timestamp.")
+    up.add_argument("--exit-code", type=int, required=True)
+    up.add_argument("--duration", type=int, required=True, help="Seconds.")
+
+
+def _run_logs(args: argparse.Namespace) -> int:
+    from pathlib import Path
+
+    from partner_scrape.config import get_logs_store
+    from partner_scrape.logs import upload_log
+
+    key = upload_log(
+        get_logs_store(),
+        job=args.job,
+        log_file=Path(args.file),
+        start=args.start,
+        end=args.end,
+        exit_code=args.exit_code,
+        duration=args.duration,
+    )
+    print(f"partner-scrape logs: uploaded logs/{key}")
+    return 0
 
 
 def _add_discover_candidates_subcommand(subparsers: argparse._SubParsersAction) -> None:
@@ -499,6 +533,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "directory":
         return _run_directory(args)
+
+    if args.command == "logs":
+        return _run_logs(args)
 
     logging.basicConfig(
         level=logging.INFO if args.verbose else logging.WARNING,

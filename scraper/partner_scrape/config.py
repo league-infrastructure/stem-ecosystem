@@ -67,6 +67,12 @@ SCRAPE_CACHE_DIR_ENV_VAR = "SCRAPE_CACHE_DIR"
 #: local directory only when set explicitly.
 PARTNER_SCRAPE_DATA_DIR_ENV_VAR = "PARTNER_SCRAPE_DATA_DIR"
 
+#: Environment variable for the run-logs location (private; see logs.py).
+PARTNER_SCRAPE_LOGS_DIR_ENV_VAR = "PARTNER_SCRAPE_LOGS_DIR"
+
+#: Default run-logs location -- ``logs/`` at the bucket root.
+DEFAULT_LOGS_LOCATION = "s3://jtl-stem-ecosystem-scrape/logs"
+
 #: Default cache location -- the DigitalOcean Spaces bucket. A local
 #: ``SCRAPE_CACHE_DIR`` is used only when set explicitly.
 DEFAULT_CACHE_LOCATION = "s3://jtl-stem-ecosystem-scrape/cache"
@@ -511,6 +517,14 @@ def get_data_store() -> Store:
     """
     return _store_for(
         PARTNER_SCRAPE_DATA_DIR_ENV_VAR, DEFAULT_DATA_LOCATION, public_read=True
+    )
+
+
+def get_logs_store() -> Store:
+    """Return the Store for run logs (``logs/``). Always private: never
+    ``public_read``, unlike the data store."""
+    return _store_for(
+        PARTNER_SCRAPE_LOGS_DIR_ENV_VAR, DEFAULT_LOGS_LOCATION, public_read=False
     )
 
 

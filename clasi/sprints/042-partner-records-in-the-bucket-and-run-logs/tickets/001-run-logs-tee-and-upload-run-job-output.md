@@ -1,10 +1,11 @@
 ---
 id: '001'
 title: 'Run logs: tee and upload run-job output'
-status: open
-use-cases: [SUC-005]
+status: done
+use-cases:
+- SUC-005
 depends-on: []
-github-issue: "72-capture-every-scraper-run-to-a-logs-directory-in-the-bucket.md"
+github-issue: 72-capture-every-scraper-run-to-a-logs-directory-in-the-bucket.md
 issue: 72-capture-every-scraper-run-to-a-logs-directory-in-the-bucket.md
 completes_issue: true
 ---
@@ -18,12 +19,12 @@ Make every `run-job` run (scheduled or manual) tee full stdout+stderr to a temp 
 
 ## Acceptance Criteria
 
-- [ ] Log object and index line produced for each job, including failed and preflight-failed runs
-- [ ] Upload failure is reported on stdout and never changes the job exit code
-- [ ] logs/ objects are written private (no public-read ACL); test asserts it
-- [ ] No secret values in logs or index (test with a sentinel secret in the environment)
-- [ ] Index append is read-modify-write safe enough for serial jobs (jobs are days apart); document it
-- [ ] `scraper/docker/README.md` documents logs/
+- [x] Log object and index line produced for each job, including failed and preflight-failed runs
+- [x] Upload failure is reported on stdout and never changes the job exit code
+- [x] logs/ objects are written private (no public-read ACL); test asserts it
+- [x] No secret values in logs or index (test with a sentinel secret in the environment)
+- [x] Index append is read-modify-write safe enough for serial jobs (jobs are days apart); document it
+- [x] `scraper/docker/README.md` documents logs/
 
 ## Implementation Plan
 

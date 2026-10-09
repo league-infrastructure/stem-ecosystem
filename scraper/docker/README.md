@@ -95,6 +95,25 @@ Each job logs UTC-timestamped lines: `START job=X`, then
 `SUCCESS job=X exit=0 duration=Ns` or `FAILURE job=X exit=N duration=Ns`.
 Values of secrets are never logged.
 
+### Run logs in the bucket (`logs/`)
+
+Every `run-job` run (scheduled or manual, including failed and
+preflight-failed runs) also tees its full stdout+stderr to a temp file and,
+on exit, uploads it to `logs/<type>/<UTC ts>-<job>.log` in the bucket
+(`type` is `scrape`, `teams` or `directory`; `profiles`/`updates` are
+reserved). One JSON line is appended to `logs/index.jsonl` with `job`,
+`start`, `end`, `exit_code`, `duration_s`, `log` (path) and, when parseable
+from the output, `events_written`, `sources` and `errors`.
+
+- `logs/` is written **private** (no public-read ACL), unlike `data/`.
+  Location override: `PARTNER_SCRAPE_LOGS_DIR` (local dir or `s3://...`).
+- Values of secret-looking environment variables (names containing KEY,
+  SECRET, TOKEN, PASSWORD) are redacted from the uploaded log.
+- An upload failure prints a `WARNING ... log upload failed` line on stdout
+  and never changes the job's exit code.
+- The index append is read-modify-write (not atomic); that is fine because
+  jobs are serial and days apart.
+
 ## Updating
 
 Rebuild the image, then stop and remove the old container and start a new

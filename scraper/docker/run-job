@@ -10,6 +10,9 @@
 #   <UTC ISO ts> FAILURE job=X missing=VAR1,VAR2        (preflight; not run)
 # Only variable names are ever logged, never values. Exits with the job's
 # status; 2 for usage errors; 1 for preflight failure.
+#
+# Full output is also uploaded to logs/<type>/<ts>-<job>.log in the bucket
+# with a line in logs/index.jsonl (see partner_scrape/logs.py).
 set -uo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -59,31 +62,54 @@ case "$job" in
     ;;
 esac
 
-echo "$(ts) START job=$job"
+# The job body runs in a pipeline so stdout+stderr are teed to a temp file
+# (still reaching `docker logs`) for upload to logs/ in the bucket on exit.
+run_body() {
+  echo "$(ts) START job=$job"
+  SECONDS=0
+
+  # shellcheck source=load-secrets
+  if ! . "$here/load-secrets"; then
+    echo "$(ts) FAILURE job=$job exit=1 duration=${SECONDS}s"
+    exit 1
+  fi
+
+  missing=()
+  for v in "${required[@]}"; do
+    if [ "$v" = ANTHROPIC_API_KEY ] && [ "$waive_anthropic" -eq 1 ]; then continue; fi
+    [ -n "${!v:-}" ] || missing+=("$v")
+  done
+  if [ "${#missing[@]}" -gt 0 ]; then
+    names="$(IFS=,; echo "${missing[*]}")"
+    echo "$(ts) FAILURE job=$job missing=$names"
+    exit 1
+  fi
+
+  "${cmd[@]}" "$@"
+  rc=$?
+  if [ "$rc" -eq 0 ]; then
+    echo "$(ts) SUCCESS job=$job exit=0 duration=${SECONDS}s"
+  else
+    echo "$(ts) FAILURE job=$job exit=$rc duration=${SECONDS}s"
+  fi
+  exit "$rc"
+}
+
+logfile="$(mktemp "${TMPDIR:-/tmp}/run-job.XXXXXX")"
+trap 'rm -f "$logfile"' EXIT
+start="$(ts)"
 SECONDS=0
+run_body "$@" 2>&1 | tee "$logfile"
+rc=${PIPESTATUS[0]}
+duration=$SECONDS
+end="$(ts)"
 
-# shellcheck source=load-secrets
-if ! . "$here/load-secrets"; then
-  echo "$(ts) FAILURE job=$job exit=1 duration=${SECONDS}s"
-  exit 1
-fi
-
-missing=()
-for v in "${required[@]}"; do
-  if [ "$v" = ANTHROPIC_API_KEY ] && [ "$waive_anthropic" -eq 1 ]; then continue; fi
-  [ -n "${!v:-}" ] || missing+=("$v")
-done
-if [ "${#missing[@]}" -gt 0 ]; then
-  names="$(IFS=,; echo "${missing[*]}")"
-  echo "$(ts) FAILURE job=$job missing=$names"
-  exit 1
-fi
-
-"${cmd[@]}" "$@"
-rc=$?
-if [ "$rc" -eq 0 ]; then
-  echo "$(ts) SUCCESS job=$job exit=0 duration=${SECONDS}s"
-else
-  echo "$(ts) FAILURE job=$job exit=$rc duration=${SECONDS}s"
-fi
+# Upload is best-effort: a failure is reported on stdout and never changes
+# the job's exit code. Secrets are re-loaded here (the job body ran in a
+# subshell); if that fails the upload simply fails and says so.
+(
+  . "$here/load-secrets" >/dev/null 2>&1
+  partner-scrape logs upload --job "$job" --file "$logfile" --start "$start" \
+    --end "$end" --exit-code "$rc" --duration "$duration"
+) || echo "$(ts) WARNING job=$job log upload failed (exit code unchanged)"
 exit "$rc"
