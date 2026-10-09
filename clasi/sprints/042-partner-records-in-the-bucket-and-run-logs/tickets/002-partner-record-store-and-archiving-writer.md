@@ -1,10 +1,11 @@
 ---
 id: '002'
 title: Partner record store and archiving writer
-status: open
-use-cases: [SUC-001]
+status: in-progress
+use-cases:
+- SUC-001
 depends-on: []
-github-issue: "77-per-partner-records-in-the-bucket-as-the-source-of-truth.md"
+github-issue: 77-per-partner-records-in-the-bucket-as-the-source-of-truth.md
 issue: 77-per-partner-records-in-the-bucket-as-the-source-of-truth.md
 completes_issue: false
 ---
