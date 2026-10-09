@@ -1,7 +1,7 @@
 ---
 id: '011'
 title: Only replace an existing social link when it is dead or on the wrong network
-status: in-progress
+status: done
 use-cases:
 - SUC-003
 - SUC-004
