@@ -110,6 +110,24 @@ def _looks_like_raw_resource(url: str) -> bool:
     return path.lower().endswith(_RAW_RESOURCE_EXTENSIONS)
 
 
+def _headless_chain(navigation: object) -> list[list]:
+    """Redirect hops of a Playwright navigation, as ``[status, url]``.
+
+    Walks ``navigation.request.redirected_from`` (oldest hop first). A
+    double lacking that attribute simply yields no chain. Playwright does
+    not expose a hop's own status, so it is recorded as ``None``.
+    """
+    hops: list[str] = []
+    request = getattr(navigation, "request", None)
+    seen = 0
+    while request is not None and seen < 20:
+        hops.append(getattr(request, "url", "") or "")
+        request = getattr(request, "redirected_from", None)
+        seen += 1
+    hops.reverse()  # oldest first: requested, hop1, ..., final
+    return [[None, u] for u in hops[1:] if u]
+
+
 class HeadlessNavigationResponse(Protocol):
     """The minimal shape read off a Playwright navigation ``Response``
     (or a fixture double standing in for one).
@@ -341,11 +359,14 @@ class PlaywrightFetcher:
             body = page.content()
             response_headers = dict(getattr(navigation, "headers", None) or {})
 
+            nav_final = getattr(navigation, "url", None)
             return FetchResponse(
                 url=url,
                 status=navigation.status,
                 headers=response_headers,
                 body=body,
+                final_url=nav_final if isinstance(nav_final, str) and nav_final else url,
+                redirect_chain=_headless_chain(navigation),
             )
 
     def _get_raw_response(

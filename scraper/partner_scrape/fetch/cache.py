@@ -26,7 +26,14 @@ from typing import Any, Callable
 from urllib.parse import urlparse
 
 from partner_scrape import config
-from partner_scrape.fetch.fetcher import DEFAULT_USER_AGENT, FetchResponse, Fetcher, UrllibFetcher
+from partner_scrape.fetch.fetcher import (
+    DEFAULT_USER_AGENT,
+    FetchResponse,
+    Fetcher,
+    UrllibFetcher,
+    is_notable_redirect,
+)
+from partner_scrape.fetch.redirects import RedirectLog
 from partner_scrape.fetch.robots import RobotsDisallowed, is_allowed
 from partner_scrape.fetch.throttle import DEFAULT_RATE_LIMIT_SECONDS, Throttle
 from partner_scrape.storage import LocalStore, Store
@@ -79,6 +86,8 @@ def write_cache_entry(cache: Store | Path, url: str, response: FetchResponse) ->
         "headers": response.headers,
         "body": response.body,
         "fetched_at": response.fetched_at.isoformat(),
+        "final_url": response.final_url,
+        "redirect_chain": response.redirect_chain,
     }
     _write_entry(_as_store(cache), url, entry)
 
@@ -105,6 +114,9 @@ def entry_to_response(entry: dict[str, Any]) -> FetchResponse:
         headers=entry["headers"],
         body=entry["body"],
         fetched_at=datetime.fromisoformat(entry["fetched_at"]),
+        # Entries written before sprint 043 lack these: no redirect.
+        final_url=entry.get("final_url") or entry["url"],
+        redirect_chain=list(entry.get("redirect_chain") or []),
     )
 
 
@@ -192,7 +204,9 @@ class PoliteFetcher:
         throttle: Throttle | None = None,
         user_agent: str = DEFAULT_USER_AGENT,
         clock: Callable[[], datetime] = lambda: datetime.now(timezone.utc),
+        redirect_log: RedirectLog | None = None,
     ):
+        self.redirect_log = redirect_log
         self.store: Store = (
             LocalStore(cache_dir) if cache_dir is not None else config.get_scrape_cache_store()
         )
@@ -208,8 +222,12 @@ class PoliteFetcher:
         rate_limit_seconds: float = DEFAULT_RATE_LIMIT_SECONDS,
         respect_robots: bool = True,
         headers: dict[str, str] | None = None,
+        label: str = "",
     ) -> FetchResponse:
         """Politely, cache-aware-ly retrieve ``url``.
+
+        ``label`` names the source/partner for redirect reporting (falls
+        back to the URL's host); it has no effect on fetching.
 
         ``headers`` are caller-supplied extras (e.g. an authenticated
         adapter's ``Authorization: Bearer ...``) merged on top of the
@@ -255,15 +273,29 @@ class PoliteFetcher:
                 touch_fetch_timestamp(self.store, url, fetched_at)
             reused = entry_to_response(cached_entry)
             reused.fetched_at = fetched_at
+            self._report_redirect(label, reused)
             return reused
 
         if 200 <= response.status < 300:
             response.fetched_at = self._clock()
             with self._cache_lock:
                 write_cache_entry(self.store, url, response)
+            self._report_redirect(label, response)
             return response
 
+        self._report_redirect(label, response)
         return response
+
+    def _report_redirect(self, label: str, response: FetchResponse) -> None:
+        """Report ``response`` to the redirect log when it is notable."""
+        if self.redirect_log is None:
+            return
+        if not is_notable_redirect(response.url, response.final_url):
+            return
+        status = response.redirect_chain[0][0] if response.redirect_chain else None
+        self.redirect_log.record(
+            label or domain_of(response.url), response.url, response.final_url, status
+        )
 
     def post(
         self,

@@ -4,6 +4,28 @@
 
 ---
 
+## Revision (2026-10-08 — sprint 043 redirect detection)
+
+Every fetch now records where it ended up (issue 73).
+
+- `FetchResponse` gains `final_url` (defaults to `url`) and `redirect_chain`
+  (list of `[status, url]`, one entry per hop followed). `UrllibFetcher`
+  fills them through a redirect-recording `HTTPRedirectHandler` (module
+  function `_urlopen`, the single patch point for tests); `PlaywrightFetcher`
+  fills `final_url` from the navigation response URL and the chain from
+  `request.redirected_from` (hop status is `None`; Playwright does not expose it).
+  Redirects are still followed; scraping behavior is unchanged.
+- Cache entries store both fields; entries written earlier load with
+  `final_url == url` and an empty chain.
+- `is_notable_redirect(requested, final)`: host differs ignoring `www.`.
+  http->https, www-only and path-only changes are not notable.
+- `fetch/redirects.py` `RedirectLog` collects notable redirects;
+  `PoliteFetcher(redirect_log=..., get(..., label=...))` reports to it, and the
+  `run` command prints `REDIRECT <source>: <requested> -> <final> (<status>)`
+  lines so run logs carry them.
+
+---
+
 ## Revision (2026-09-02 — sprint 031 POST support for Workday)
 
 Sprint 031 (ATS adapters: Workday, NEOGOV, SmartRecruiters, Workable)

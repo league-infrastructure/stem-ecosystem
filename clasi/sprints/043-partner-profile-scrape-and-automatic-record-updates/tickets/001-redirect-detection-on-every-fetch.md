@@ -1,7 +1,7 @@
 ---
 id: '001'
 title: Redirect detection on every fetch
-status: open
+status: done
 use-cases:
 - SUC-001
 depends-on: []
@@ -19,11 +19,11 @@ Record `final_url` and `redirect_chain` on every fetch, plain and headless, stor
 
 ## Acceptance Criteria
 
-- [ ] `FetchResponse` has `final_url` (default = url) and `redirect_chain` (list of [status, url]); `UrllibFetcher` fills them via a redirect-recording handler; `PlaywrightFetcher` fills `final_url` from the navigation response
-- [ ] Cache entries store both fields; old entries without them load with `final_url == url` and empty chain
-- [ ] `is_notable_redirect(requested, final)`: True when host differs ignoring `www.`; False for http->https on same host, www-only, and no redirect
-- [ ] `fetch/redirects.py` `RedirectLog` collects notable redirects (source/partner, requested, final, status); `PoliteFetcher` reports to it when one is supplied; summarized as lines in run output so run logs carry them
-- [ ] Following redirects stays on; no change to scraping behavior; existing tests pass
+- [x] `FetchResponse` has `final_url` (default = url) and `redirect_chain` (list of [status, url]); `UrllibFetcher` fills them via a redirect-recording handler; `PlaywrightFetcher` fills `final_url` from the navigation response
+- [x] Cache entries store both fields; old entries without them load with `final_url == url` and empty chain
+- [x] `is_notable_redirect(requested, final)`: True when host differs ignoring `www.`; False for http->https on same host, www-only, and no redirect
+- [x] `fetch/redirects.py` `RedirectLog` collects notable redirects (source/partner, requested, final, status); `PoliteFetcher` reports to it when one is supplied; summarized as lines in run output so run logs carry them
+- [x] Following redirects stays on; no change to scraping behavior; existing tests pass
 
 ## Implementation Plan
 
