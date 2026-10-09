@@ -186,6 +186,7 @@ def _build_parser() -> argparse.ArgumentParser:
     _add_logs_subcommand(subparsers)
     _add_partners_subcommand(subparsers)
     _add_profiles_subcommand(subparsers)
+    _add_updates_subcommand(subparsers)
 
     return parser
 
@@ -559,6 +560,62 @@ def _run_profiles(args: argparse.Namespace) -> int:
     return 0
 
 
+def _add_updates_subcommand(subparsers: argparse._SubParsersAction) -> None:
+    from partner_scrape.updates.job import DEFAULT_MAX_CHANGES
+
+    parser = subparsers.add_parser(
+        "updates",
+        help="Check partner records against their profile snapshots, ask Haiku "
+        "for corrections, and apply policy-approved changes via the partner writer.",
+    )
+    parser.add_argument("--dry-run", action="store_true",
+                        help="Report only: no record writes, no consolidate, no state.")
+    parser.add_argument("--no-llm", action="store_true",
+                        help="Flags only; never call Haiku.")
+    parser.add_argument("--max-changes", type=int, default=DEFAULT_MAX_CHANGES,
+                        help="Max records changed per run (default %(default)s); "
+                        "the rest are reported as deferred.")
+    parser.add_argument("--slug", default=None, help="Only this partner.")
+    parser.add_argument("--all", action="store_true",
+                        help="Examine every partner, not just those whose snapshot changed.")
+
+
+def _run_updates(args: argparse.Namespace) -> int:
+    from partner_scrape import config
+    from partner_scrape.partners.records import load_roster
+    from partner_scrape.partners.writer import PartnerWriter
+    from partner_scrape.updates.checks import fetcher_link_checker
+    from partner_scrape.updates.job import run_updates
+
+    data = config.get_data_store()
+    history = config.get_history_store()
+    proposer = None
+    link_checker = None
+    if not args.no_llm:
+        from partner_scrape.updates.proposer import AnthropicProposer
+
+        proposer = AnthropicProposer()
+        link_checker = fetcher_link_checker(PoliteFetcher())
+    roster = load_roster(data, validate=False)
+    report = run_updates(
+        roster.as_list(),
+        data_store=data,
+        history_store=history,
+        cache_store=config.get_scrape_cache_store(),
+        writer=PartnerWriter(data, history),
+        proposer=proposer,
+        link_checker=link_checker,
+        dry_run=args.dry_run,
+        no_llm=args.no_llm,
+        max_changes=args.max_changes,
+        slug=args.slug,
+        all_partners=args.all,
+    )
+    for line in report.lines():
+        print(line)
+    return 1 if any(o.status == "error" for o in report.outcomes) else 0
+
+
 def _add_partners_subcommand(subparsers: argparse._SubParsersAction) -> None:
     parser = subparsers.add_parser(
         "partners", help="Partner records in the bucket (data/partners/<slug>/)."
@@ -732,6 +789,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "profiles":
         return _run_profiles(args)
+
+    if args.command == "updates":
+        return _run_updates(args)
 
     logging.basicConfig(
         level=logging.INFO if args.verbose else logging.WARNING,

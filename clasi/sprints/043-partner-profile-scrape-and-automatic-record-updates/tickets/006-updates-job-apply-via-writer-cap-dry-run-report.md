@@ -1,11 +1,12 @@
 ---
 id: '006'
 title: 'updates job: apply via writer, cap, dry-run, report'
-status: open
+status: in-progress
 use-cases:
 - SUC-003
 - SUC-004
-depends-on: ['005']
+depends-on:
+- '005'
 github-issue: ''
 issue: 75-post-scrape-partner-record-update-check-with-haiku.md
 completes_issue: true

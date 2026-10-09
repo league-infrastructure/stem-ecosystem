@@ -72,3 +72,27 @@ same network's domain); URL/email/phone shape check; then
 `validate_records([candidate])` must pass, else that field is rejected.
 `applied` is the full new record, or None when nothing applies. Ticket 006's
 job calls `put_record(actor="haiku")` only with `result.applied`.
+
+## job.py (043-006) -- `partner-scrape updates`
+
+`run_updates(roster, data_store=, history_store=, cache_store=, writer=,
+proposer=, link_checker=, dry_run=, no_llm=, max_changes=20, slug=,
+all_partners=)`. Flow: `run_checks` -> for `needs_llm` partners
+`propose_for_partner` (cached) -> `apply_policy` -> `PartnerWriter.put_record(
+slug, result.applied, actor="haiku")` (the single writer call; a test pins it)
+-> `consolidate` if anything changed -> `save_state`.
+
+- `--dry-run`: proposals are still fetched (and cached); no records, no
+  consolidate, no state. `--no-llm`: flags only, no state saved (nothing was
+  really handled, so partners stay due). `--max-changes N`: records changed
+  per run; further approved changes are `deferred` and their state hash is not
+  advanced, so they are re-examined (proposal cache hit) next run.
+- A partner that raises (LLM or validation error) is reported as `ERROR`,
+  keeps its old state hash, and does not stop the others; the CLI exits 1.
+- Report: stdout lines `FLAG`, `REDIRECT`, `PROPOSED old -> new`, `APPLIED` /
+  `WOULD APPLY`, `REJECTED field: reason`, `DEFERRED`, `ERROR`, and a counts
+  line (run-job uploads stdout to `logs/updates/`). Machine-readable JSON per
+  run at `updates/<UTC ts>.json` in the private history store: old record,
+  flags, proposal, applied diff, rejections (also written on dry runs).
+- Partners with a notable redirect are re-examined every run (a `checks.py`
+  rule); run-job/crontab wiring is ticket 008.
