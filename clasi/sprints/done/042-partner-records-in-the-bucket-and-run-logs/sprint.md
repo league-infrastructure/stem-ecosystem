@@ -1,10 +1,17 @@
 ---
 id: '042'
 title: Partner records in the bucket, and run logs
-status: ticketing
+status: done
 branch: sprint/042-partner-records-in-the-bucket-and-run-logs
-use-cases: [SUC-001, SUC-002, SUC-003, SUC-004, SUC-005]
-issues: [77-per-partner-records-in-the-bucket-as-the-source-of-truth.md, 72-capture-every-scraper-run-to-a-logs-directory-in-the-bucket.md]
+use-cases:
+- SUC-001
+- SUC-002
+- SUC-003
+- SUC-004
+- SUC-005
+issues:
+- 77-per-partner-records-in-the-bucket-as-the-source-of-truth.md
+- 72-capture-every-scraper-run-to-a-logs-directory-in-the-bucket.md
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
 
