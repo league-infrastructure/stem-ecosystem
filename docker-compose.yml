@@ -1,7 +1,8 @@
 # Swarm stack file for the partner scraper (see scraper/docker/README.md).
 # Deploy by hand:
-#   TAG=<version> docker --context swarm1 stack deploy --with-registry-auth \
+#   TAG=<version> docker --context swarm1 stack deploy \
 #     -c docker-compose.yml stem-ecosystem
+# The ghcr image is public: do NOT pass --with-registry-auth.
 x-league:
   stack: stem-ecosystem
 

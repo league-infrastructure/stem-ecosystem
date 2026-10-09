@@ -1,5 +1,6 @@
 # Schedule for supercronic. Times are America/Los_Angeles (CRON_TZ).
-# Jobs are spaced days apart so a long scrape cannot overlap the next job.
+# Jobs run on different days (profiles and updates share Sunday, two hours
+# apart, after the profile snapshots exist) so a long scrape cannot overlap.
 CRON_TZ=America/Los_Angeles
 
 # scrape: Monday and Thursday 03:00
@@ -8,3 +9,7 @@ CRON_TZ=America/Los_Angeles
 0 3 * * 3 run-job teams
 # directory: Saturday 03:00
 0 3 * * 6 run-job directory
+# profiles: Sunday 03:00 (fetch partner home/About/Contact pages; no LLM)
+0 3 * * 0 run-job profiles
+# updates: Sunday 05:00 (after profiles; Haiku record updates + report)
+0 5 * * 0 run-job updates

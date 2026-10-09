@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Run one scraper job with secret preflight and timestamped result logging.
 #
-#   run-job scrape|teams|directory [extra partner-scrape args...]
+#   run-job scrape|teams|directory|profiles|updates [extra partner-scrape args...]
 #
 # Log lines (stdout):
 #   <UTC ISO ts> START job=X
@@ -20,7 +20,7 @@ here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ts() { date -u +%Y-%m-%dT%H:%M:%SZ; }
 
 usage() {
-  echo "usage: run-job scrape|teams|directory [extra args...]" >&2
+  echo "usage: run-job scrape|teams|directory|profiles|updates [extra args...]" >&2
   exit 2
 }
 
@@ -41,6 +41,14 @@ case "$job" in
     cmd=(partner-scrape directory)
     required=(DO_SPACES_ACCESS_KEY DO_SPACES_SECRET_KEY)
     ;;
+  profiles)
+    cmd=(partner-scrape profiles)
+    required=(DO_SPACES_ACCESS_KEY DO_SPACES_SECRET_KEY)
+    ;;
+  updates)
+    cmd=(partner-scrape updates)
+    required=(DO_SPACES_ACCESS_KEY DO_SPACES_SECRET_KEY ANTHROPIC_API_KEY)
+    ;;
   *) usage ;;
 esac
 
@@ -59,6 +67,10 @@ case "$job" in
     ;;
   teams)
     if has_arg --no-sponsors "$@" && has_arg --no-descriptions "$@"; then waive_anthropic=1; fi
+    ;;
+  updates)
+    # --dry-run still calls Haiku, so only --no-llm waives the key.
+    if has_arg --no-llm "$@"; then waive_anthropic=1; fi
     ;;
 esac
 

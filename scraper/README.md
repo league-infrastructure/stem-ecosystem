@@ -53,6 +53,23 @@ from the site checkout; see "Running locally" below.
 Scheduled scraping runs from a Docker image with built-in cron; build, secrets,
 schedule, manual runs and logs are in [`docker/README.md`](docker/README.md).
 
+Besides the scrape, teams and directory jobs, two weekly jobs keep partner
+records fresh: `profiles` (Sunday 03:00; snapshots each partner's home/About/
+Contact pages to `history/profiles/`) and `updates` (Sunday 05:00; asks Haiku
+for corrections to records, applies policy-approved changes with actor
+`haiku`, and writes a report to `history/updates/<ts>.json` that also holds
+redirect and per-partner event-quality checks). Locally:
+
+```bash
+uv run partner-scrape profiles --limit 5
+uv run partner-scrape updates --dry-run          # report only, no writes
+uv run partner-scrape updates --no-llm           # flags only, no Haiku
+```
+
+Logs go to `logs/profiles/` and `logs/updates/`. To inspect or undo a Haiku
+change (`history/partners/changes.jsonl`, the archived record, `partners put`)
+see "Profiles and updates jobs" in `docker/README.md`.
+
 ### Configure
 
 Cache and published data live in the DigitalOcean Spaces bucket

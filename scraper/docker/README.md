@@ -42,6 +42,8 @@ Required per job:
 | scrape | `DO_SPACES_ACCESS_KEY`, `DO_SPACES_SECRET_KEY`, `ANTHROPIC_API_KEY` (waived with `--no-enrich` or `--dry-run`), `LEAGUESYNC_API_KEY` |
 | teams | `DO_SPACES_ACCESS_KEY`, `DO_SPACES_SECRET_KEY`, `ANTHROPIC_API_KEY` (waived with `--no-sponsors --no-descriptions`), `TBA_KEY` |
 | directory | `DO_SPACES_ACCESS_KEY`, `DO_SPACES_SECRET_KEY` |
+| profiles | `DO_SPACES_ACCESS_KEY`, `DO_SPACES_SECRET_KEY` |
+| updates | `DO_SPACES_ACCESS_KEY`, `DO_SPACES_SECRET_KEY`, `ANTHROPIC_API_KEY` (waived **only** with `--no-llm`; `--dry-run` still calls Haiku) |
 
 `ROBOTEVENTS_KEY` is optional. A job with missing variables logs
 `FAILURE job=X missing=NAMES` (names only) and does not run.
@@ -67,6 +69,8 @@ spaced days apart so a long scrape cannot overlap the next job.
 | `scrape` | Monday and Thursday 03:00 |
 | `teams` | Wednesday 03:00 |
 | `directory` | Saturday 03:00 |
+| `profiles` | Sunday 03:00 |
+| `updates` | Sunday 05:00 (after `profiles`) |
 
 ## Manual runs
 
@@ -75,6 +79,8 @@ spaced days apart so a long scrape cannot overlap the next job.
 docker exec partner-scrape run-job scrape
 docker exec partner-scrape run-job teams
 docker exec partner-scrape run-job directory
+docker exec partner-scrape run-job profiles
+docker exec partner-scrape run-job updates --dry-run
 
 # One-shot container (extra args go to partner-scrape)
 docker run --rm --ipc=host -e SCRAPER_SECRETS_B64="$SCRAPER_SECRETS_B64" \
@@ -101,8 +107,7 @@ Values of secrets are never logged.
 Every `run-job` run (scheduled or manual, including failed and
 preflight-failed runs) also tees its full stdout+stderr to a temp file and,
 on exit, uploads it to `logs/<type>/<UTC ts>-<job>.log` in the bucket
-(`type` is `scrape`, `teams` or `directory`; `profiles`/`updates` are
-reserved). One JSON line is appended to `logs/index.jsonl` with `job`,
+(`type` is `scrape`, `teams`, `directory`, `profiles` or `updates`). One JSON line is appended to `logs/index.jsonl` with `job`,
 `start`, `end`, `exit_code`, `duration_s`, `log` (path) and, when parseable
 from the output, `events_written`, `sources` and `errors`.
 
@@ -114,6 +119,52 @@ from the output, `events_written`, `sources` and `errors`.
   and never changes the job's exit code.
 - The index append is read-modify-write (not atomic); that is fine because
   jobs are serial and days apart.
+
+## Profiles and updates jobs
+
+**`profiles`** (no LLM) fetches each partner's home, About and Contact pages
+politely and writes a private snapshot per partner to
+`history/profiles/<slug>/profile.json`. Flags: `--slug S`, `--limit N`.
+
+**`updates`** compares each partner record with its latest snapshot, asks
+Claude Haiku for corrections, and applies only policy-approved changes
+through the partner writer (actor `haiku`), then re-consolidates
+`data/partners.json`. Flags:
+
+| Flag | Effect |
+|---|---|
+| `--dry-run` | Report only: still calls Haiku to show real proposals, but writes no records, no consolidate, no state. |
+| `--no-llm` | Flags only; never calls Haiku (no `ANTHROPIC_API_KEY` needed). |
+| `--max-changes N` | Safeguard: at most N records changed per run; the rest are reported as deferred. |
+| `--slug S` | Only this partner. |
+| `--all` | Examine every partner, not just those whose snapshot changed. |
+
+Safeguards: only an allowlist of fields can change automatically (name,
+website, phone, email, location, social links, description); logos,
+coordinates, organization type, id and slug never do. Run `updates --dry-run`
+first when trying something new.
+
+### Where things land (all private, under the bucket)
+
+| What | Where |
+|---|---|
+| Updates report (flags, applied/deferred changes, redirects, event-quality checks) | `history/updates/<ts>.json`, and printed in the run log |
+| Run logs | `logs/profiles/` and `logs/updates/`, indexed in `logs/index.jsonl` |
+| Profile snapshots | `history/profiles/<slug>/profile.json` |
+| Change log of every record write | `history/partners/changes.jsonl` |
+| Prior record versions | `history/partners/<slug>/<UTC stamp>-partner.json` |
+
+### Inspecting and undoing a Haiku change
+
+1. Find it: lines in `history/partners/changes.jsonl` with
+   `"actor": "haiku"` give `slug`, `ts`, `changed` fields and `archived`
+   (the key of the record as it was just before the change).
+2. Compare `archived` (the old record) with the current one
+   (`partner-scrape partners get <slug>`).
+3. Restore: save the archived JSON to a file and run
+   `partner-scrape partners put <slug> restored.json` (this validates, writes
+   the record and archives the current one again). Then run
+   `partner-scrape partners consolidate` to refresh `data/partners.json`.
 
 ## Updating
 
