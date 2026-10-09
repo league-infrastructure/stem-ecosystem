@@ -25,6 +25,7 @@ from starlette.routing import Route
 from partner_scrape.hints import HintError, HintStore, HintWriter, actor_for
 from partner_scrape.sidecar.agent import Agent, ContextBuilder, EchoAgent, ToolUseAgent
 from partner_scrape.sidecar.config import SidecarConfig
+from partner_scrape.sidecar.limits import Limits, RateLimited, TurnstileVerifier
 from partner_scrape.sidecar.llm import GuardClient, LLMUnavailable
 from partner_scrape.sidecar.resolver import ENTITY_TYPES, EntityResolver
 from partner_scrape.sidecar.sessions import Session, SessionStore, utcnow
@@ -93,7 +94,9 @@ class UpdateService:
         agent: Agent,
         sessions: SessionStore,
         guard: GuardClient | None = None,
+        limits: Limits | None = None,
     ):
+        self.limits = limits
         self.config = config
         self.resolver = resolver
         self.hints = hints
@@ -147,6 +150,28 @@ class UpdateService:
             why = "I can't continue this conversation."
         return f"{why} Please email {self.config.fallback_email} for anything else."
 
+    def _rate(self, fn, *args) -> None:
+        try:
+            fn(*args)
+        except RateLimited as exc:
+            raise ApiError(
+                "rate_limited",
+                "Too many requests. Please wait a bit and try again.",
+                headers={"Retry-After": str(exc.retry_after)},
+            ) from None
+
+    def _check_spend(self) -> None:
+        if self.limits is not None and self.limits.spend.cap_reached():
+            raise ApiError(
+                "spend_cap_reached",
+                "Our assistant has reached its daily limit. Please try again "
+                f"tomorrow or email {self.config.fallback_email}.",
+            )
+
+    def _record_spend(self, usage: list[dict[str, Any]]) -> None:
+        if self.limits is not None and usage:
+            self.limits.spend.record(usage)
+
     # -- handlers ----------------------------------------------------------
     def healthz(self, request: Request) -> JSONResponse:
         return JSONResponse({"status": "ok", "version": _version()})
@@ -159,6 +184,13 @@ class UpdateService:
                 "bad_request",
                 f"'type' must be one of {', '.join(ENTITY_TYPES)} and 'slug' a non-empty string.",
             )
+        ip = client_ip(request)
+        if self.limits is not None:
+            if not self.limits.verify_turnstile(data.get("turnstile_token"), ip):
+                raise ApiError("turnstile_failed", "Human verification failed. Please try again.")
+            self._check_spend()
+            self._rate(self.limits.check_session_start,
+                       self.transcripts.ip_hash(ip), f"{type_}:{slug}")
         entity = self.resolver.resolve(type_, slug)
         if entity is None:
             raise ApiError(
@@ -191,53 +223,64 @@ class UpdateService:
         with s.lock:
             if s.status != "active":
                 raise ApiError("session_ended", self._end_message(s.ended_reason or "turn_cap"))
-            ts = _stamp(self.sessions.clock())
-            verdict = None
-            if self.guard is not None:
-                try:
-                    verdict = self.guard.classify(s.entity.name, s.messages, text)
-                except LLMUnavailable as exc:
-                    log.warning("guard unavailable (session %s): %s", s.id, exc)
-                    raise self._upstream_error() from None  # fail closed
-                if verdict.usage:
-                    s.usage.append(verdict.usage.to_dict())
-            s.messages.append({"role": "user", "text": text, "ts": ts})
-            if verdict is not None and not verdict.legitimate:
-                s.status, s.ended_reason = "ended", "guard"
-                s.guard_reason = f"{verdict.category}: {verdict.reason}"
-                log.info("guard ended session %s: %s", s.id, s.guard_reason)
-                reply = self._end_message("guard")
-                s.messages.append({"role": "assistant", "text": reply, "ts": ts})
-                self.transcripts.write(s)
-                return JSONResponse({
-                    "reply": reply, "proposed_hints": s.proposed_hints,
-                    "status": s.status, "ended_reason": s.ended_reason,
-                    "turns_left": max(self.config.max_turns - s.user_turns, 0),
-                    "notices": [],
-                })
+            self._check_spend()
+            if self.limits is not None:
+                self._rate(self.limits.check_message, s.ip_hash,
+                           f"{s.entity.type}:{s.entity.slug}")
+            spent_before = len(s.usage)
             try:
-                turn = self.agent.respond(s, text)
+                return self._message_locked(s, text)
+            finally:
+                self._record_spend(s.usage[spent_before:])
+
+    def _message_locked(self, s: Session, text: str) -> JSONResponse:
+        ts = _stamp(self.sessions.clock())
+        verdict = None
+        if self.guard is not None:
+            try:
+                verdict = self.guard.classify(s.entity.name, s.messages, text)
             except LLMUnavailable as exc:
-                log.warning("agent unavailable (session %s): %s", s.id, exc)
-                s.messages.pop()  # the turn did not happen; let the user retry
-                raise self._upstream_error() from None
-            s.usage.extend(u.to_dict() for u in turn.usage)
-            reply, notices = turn.reply, list(turn.notices)
-            if turn.proposed_hints is not None:
-                s.proposed_hints = turn.proposed_hints
-            if s.user_turns >= self.config.max_turns:
-                s.status, s.ended_reason = "ended", "turn_cap"
-                reply = f"{reply}\n\n{self._end_message('turn_cap')}"
+                log.warning("guard unavailable (session %s): %s", s.id, exc)
+                raise self._upstream_error() from None  # fail closed
+            if verdict.usage:
+                s.usage.append(verdict.usage.to_dict())
+        s.messages.append({"role": "user", "text": text, "ts": ts})
+        if verdict is not None and not verdict.legitimate:
+            s.status, s.ended_reason = "ended", "guard"
+            s.guard_reason = f"{verdict.category}: {verdict.reason}"
+            log.info("guard ended session %s: %s", s.id, s.guard_reason)
+            reply = self._end_message("guard")
             s.messages.append({"role": "assistant", "text": reply, "ts": ts})
             self.transcripts.write(s)
             return JSONResponse({
-                "reply": reply,
-                "proposed_hints": s.proposed_hints,
-                "status": s.status,
-                "ended_reason": s.ended_reason,
+                "reply": reply, "proposed_hints": s.proposed_hints,
+                "status": s.status, "ended_reason": s.ended_reason,
                 "turns_left": max(self.config.max_turns - s.user_turns, 0),
-                "notices": notices,
+                "notices": [],
             })
+        try:
+            turn = self.agent.respond(s, text)
+        except LLMUnavailable as exc:
+            log.warning("agent unavailable (session %s): %s", s.id, exc)
+            s.messages.pop()  # the turn did not happen; let the user retry
+            raise self._upstream_error() from None
+        s.usage.extend(u.to_dict() for u in turn.usage)
+        reply, notices = turn.reply, list(turn.notices)
+        if turn.proposed_hints is not None:
+            s.proposed_hints = turn.proposed_hints
+        if s.user_turns >= self.config.max_turns:
+            s.status, s.ended_reason = "ended", "turn_cap"
+            reply = f"{reply}\n\n{self._end_message('turn_cap')}"
+        s.messages.append({"role": "assistant", "text": reply, "ts": ts})
+        self.transcripts.write(s)
+        return JSONResponse({
+            "reply": reply,
+            "proposed_hints": s.proposed_hints,
+            "status": s.status,
+            "ended_reason": s.ended_reason,
+            "turns_left": max(self.config.max_turns - s.user_turns, 0),
+            "notices": notices,
+        })
 
     def confirm(self, request: Request) -> JSONResponse:
         s = self._session(request.path_params["session_id"])
@@ -285,6 +328,7 @@ def create_app(
     guard: GuardClient | None = None,
     clock: Callable[[], datetime] = utcnow,
     fetcher: Any = None,
+    turnstile: TurnstileVerifier | None = None,
 ) -> Starlette:
     """Build the app from explicit collaborators (tests pass fakes/LocalStores)."""
     service = UpdateService(
@@ -296,6 +340,7 @@ def create_app(
         agent=agent or EchoAgent(),
         sessions=SessionStore(config.idle_minutes, clock),
         guard=guard,
+        limits=Limits(config, history_store, clock, turnstile),
     )
 
     def error_response(err: ApiError) -> JSONResponse:
