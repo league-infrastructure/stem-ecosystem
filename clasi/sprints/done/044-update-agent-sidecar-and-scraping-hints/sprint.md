@@ -1,7 +1,7 @@
 ---
 id: '044'
 title: Update-agent sidecar and scraping hints
-status: planning-docs
+status: done
 branch: sprint/044-update-agent-sidecar-and-scraping-hints
 use-cases:
 - SUC-001
