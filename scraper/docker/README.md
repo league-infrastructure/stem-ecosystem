@@ -176,6 +176,106 @@ docker build -f scraper/docker/Dockerfile -t partner-scrape .
 docker rm -f partner-scrape
 ```
 
+## Updates sidecar
+
+A second image, built from `Dockerfile.sidecar`, runs the partner
+update-agent HTTP API (`partner_scrape.sidecar`, Starlette + uvicorn) as the
+`updates` service of the `stem-ecosystem` stack, served at
+`https://updates.jtlapp.net` through Caddy (labels under `deploy.labels`, the
+external `caddy` network, no published ports). It is a slim Python image (no
+Chromium, no scheduler), runs as the non-root user `updates` on port 8000, and
+keeps no local state: sessions, history, hints and the daily spend counter live
+in the bucket.
+
+### Build
+
+```bash
+docker build -f scraper/docker/Dockerfile.sidecar -t partner-scrape-updates .
+docker buildx build --platform linux/amd64 \
+  -f scraper/docker/Dockerfile.sidecar \
+  -t ghcr.io/league-infrastructure/stem-ecosystem-updates:<ver> --push .
+```
+
+### Secrets bundle
+
+Secret `stem-ecosystem_updates_secrets`, mounted at
+`/run/secrets/stem-ecosystem_updates_secrets` (`SCRAPER_SECRETS_FILE`, read by
+`load-secrets` as for the scraper). Build it with the `--updates` flag, which
+selects only these keys from `.env`:
+
+| Key | Required | Purpose |
+|---|---|---|
+| `ANTHROPIC_API_KEY` | yes | the agent (and the default guard) |
+| `DO_SPACES_ACCESS_KEY`, `DO_SPACES_SECRET_KEY` | yes | the bucket |
+| `OPENROUTER_API_KEY` | no | only with `UPDATES_GUARD_BACKEND=openrouter` |
+| `TURNSTILE_SECRET` | no | Turnstile is enforced only when set |
+| `IP_HASH_SALT` | no | stable IP-hash salt; random per process if unset |
+
+```bash
+scraper/docker/make-secrets.sh --updates | \
+  docker --context swarm1 secret create stem-ecosystem_updates_secrets -
+```
+
+Secrets are immutable; rotate as in "Swarm deployment" step 2 (new name, update
+the compose file, redeploy, remove the old one).
+
+### Environment variables (non-secret)
+
+Set in `docker-compose.yml` (the first three have `${VAR:-default}` overrides
+at deploy time); all others use the defaults shown.
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `UPDATES_ALLOWED_ORIGINS` | `https://www.sdstemecosystem.org,https://sdstemecosystem.org,http://localhost:4322,http://localhost:4323` | CORS allow-list |
+| `UPDATES_FALLBACK_EMAIL` | `partners@sdstemecosystem.org` | shown to users when the agent cannot help |
+| `UPDATES_DAILY_SPEND_USD` | `5` | estimated USD per UTC day, all sessions (cost cap; persisted) |
+| `UPDATES_MAX_TURNS` | `12` | messages per session |
+| `UPDATES_MAX_MESSAGE_CHARS` | `1000` | length of one user message |
+| `UPDATES_IDLE_MINUTES` | `30` | session idle expiry |
+| `UPDATES_IP_SESSIONS_PER_HOUR` / `UPDATES_IP_MESSAGES_PER_HOUR` | `10` / `60` | per-IP sliding hour (in memory; restart resets) |
+| `UPDATES_LISTING_SESSIONS_PER_HOUR` / `UPDATES_LISTING_MESSAGES_PER_HOUR` | `30` / `150` | per-listing sliding hour |
+| `UPDATES_GUARD_BACKEND` | `anthropic` | `anthropic` or `openrouter` |
+| `UPDATES_OPENROUTER_GUARD_MODEL` | module default | OpenRouter guard model |
+| `UPDATES_MODEL_PRICES` | built-in table | price overrides for the spend estimate |
+| `UPDATES_PORT` | `8000` | listen port (the Caddy label and healthcheck assume 8000) |
+| `PARTNER_SCRAPE_DATA_DIR`, `PARTNER_SCRAPE_HISTORY_DIR`, `PARTNER_SCRAPE_HINTS_DIR` | the bucket | point at local dirs to run without the bucket |
+
+### Run locally with fake values
+
+```bash
+printf 'ANTHROPIC_API_KEY=fake\nDO_SPACES_ACCESS_KEY=fake\nDO_SPACES_SECRET_KEY=fake\n' | base64 > /tmp/fake.b64
+docker run --rm -p 8000:8000 -v /tmp/fake.b64:/run/secrets/s:ro \
+  -e SCRAPER_SECRETS_FILE=/run/secrets/s -e PARTNER_SCRAPE_DATA_DIR=/d \
+  -v "$PWD/some-data:/d" -e PARTNER_SCRAPE_HISTORY_DIR=/h -e PARTNER_SCRAPE_HINTS_DIR=/n \
+  partner-scrape-updates
+curl localhost:8000/healthz
+```
+
+### Deploy and operate
+
+Deploy with the same `docker stack deploy` as the scraper (steps 3-5 of
+"Swarm deployment"; `TAG` applies to both images, so build and push **both**
+images for a version first). Then:
+
+```bash
+docker --context swarm1 service ps stem-ecosystem_updates
+docker --context swarm1 service logs stem-ecosystem_updates
+curl https://updates.jtlapp.net/healthz
+```
+
+`check-release . --live` also verifies that the external secret exists and that
+`updates.jtlapp.net` is not served by another stack.
+
+### Cost controls
+
+- `UPDATES_DAILY_SPEND_USD` is a hard daily ceiling on estimated spend; when it
+  is hit, new work is refused until the next UTC day. Lower it to throttle.
+- Per-IP and per-listing hourly limits, a turn cap and a message-length cap bound
+  any one visitor. Cloudflare Turnstile (`TURNSTILE_SECRET`) adds bot protection.
+- To stop the service entirely: `docker --context swarm1 service scale stem-ecosystem_updates=0`.
+- Pricing for the estimate comes from `UPDATES_MODEL_PRICES` overrides plus a
+  built-in table; check provider invoices occasionally.
+
 ## Swarm deployment
 
 Production runs as the `stem-ecosystem` stack on the League Docker swarm,

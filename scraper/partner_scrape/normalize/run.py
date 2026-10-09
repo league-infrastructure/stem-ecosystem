@@ -423,6 +423,8 @@ def run(
     source_taxonomy_defaults: dict[str, dict[str, Any]] | None = None,
     today: date | None = None,
     image_resolver: Callable[[str], str] | None = None,
+    exclude_matchers: dict[str, Callable[[str], bool]] | None = None,
+    excluded_counts: dict[str, int] | None = None,
 ) -> list[Opportunity]:
     """Normalize ``events`` into deduplicated, taxonomy-tagged Opportunities.
 
@@ -471,6 +473,14 @@ def run(
             this module never imports `export` itself (see
             `_to_opportunity`'s comment for why).
 
+        exclude_matchers: optional `partner slug -> predicate(title)` built
+            from the partner's exclude hints (sprint 044 ticket 006). Events
+            whose partner (joined by org name) has a matching predicate and
+            whose title matches are dropped before collapse/dedup. Absent or
+            empty: no change in behavior.
+        excluded_counts: optional dict filled in place with
+            `partner slug -> number of events dropped`, for the run log.
+
     Returns:
         One `Opportunity` per surviving, deduplicated/collapsed record.
     """
@@ -492,6 +502,19 @@ def run(
             event.start = event.start.replace(tzinfo=None)
         if event.end is not None and event.end.tzinfo is not None:
             event.end = event.end.replace(tzinfo=None)
+
+    if exclude_matchers:
+        kept: list[Event] = []
+        for event in events:
+            org = source_org_names.get(event.source_id, event.source_id)
+            slug = (find_partner(org, partners_by_norm) or {}).get("slug") or ""
+            match = exclude_matchers.get(slug)
+            if match is not None and match(event.title or ""):
+                if excluded_counts is not None:
+                    excluded_counts[slug] = excluded_counts.get(slug, 0) + 1
+                continue
+            kept.append(event)
+        events = kept
 
     curated_events: list[Event] = []
     other_events: list[Event] = []

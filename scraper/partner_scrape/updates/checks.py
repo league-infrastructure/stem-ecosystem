@@ -440,10 +440,16 @@ def run_checks(
     link_checker: LinkChecker | None = None,
     all_partners: bool = False,
     slug: str | None = None,
+    hints_fp: Callable[[str], str] | None = None,
 ) -> CheckReport:
     """Check partners whose snapshot changed since the last run (state in
     ``updates/state.json`` of ``cache_store``), or that have a notable
     redirect, or every partner with ``all_partners``.
+
+    ``hints_fp(slug)`` returns a fingerprint of the partner's stored hints
+    ("" for none). It is folded into the state value, so a hints change since
+    the last saved state re-examines the partner (a partner with no hints keeps
+    the plain snapshot hash, i.e. the pre-hints state value).
 
     Does not write state: the caller persists ``report.new_state`` with
     ``save_state`` once the downstream work succeeded.
@@ -459,6 +465,9 @@ def run_checks(
             report.no_snapshot.append(s)
             continue
         h = snapshot_hash(snap)
+        fp = hints_fp(s) if hints_fp else ""
+        if fp:
+            h = f"{h}+h:{fp}"
         changed = state.get(s) != h
         if not (all_partners or changed or snap.get("redirects")):
             report.skipped_unchanged += 1

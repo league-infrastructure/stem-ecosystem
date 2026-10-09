@@ -559,3 +559,15 @@ def get_history_store() -> Store:
     return _store_for(
         PARTNER_SCRAPE_HISTORY_DIR_ENV_VAR, DEFAULT_HISTORY_LOCATION, public_read=False
     )
+
+
+DEFAULT_HINTS_LOCATION = "s3://jtl-stem-ecosystem-scrape/hints"
+PARTNER_SCRAPE_HINTS_DIR_ENV_VAR = "PARTNER_SCRAPE_HINTS_DIR"
+
+
+def get_hints_store() -> Store:
+    """Return the Store for ``<slug>.json`` per-entity scraping hints
+    (``hints/`` in the bucket). Always private: never ``public_read``."""
+    return _store_for(
+        PARTNER_SCRAPE_HINTS_DIR_ENV_VAR, DEFAULT_HINTS_LOCATION, public_read=False
+    )

@@ -15,6 +15,9 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
 from typing import Any, Callable
 
+from partner_scrape.hints import (
+    EVENT_ROLES, HintStore, context_hints, hints_fingerprint, load_hints, page_hint_urls,
+)
 from partner_scrape.partners.consolidate import consolidate
 from partner_scrape.partners.writer import PartnerWriter
 from partner_scrape.profiles.snapshot import read_snapshot
@@ -46,6 +49,10 @@ class PartnerOutcome:
     policy: PolicyResult | None = None
     status: str = "flagged"  # flagged|unchanged|applied|would_apply|deferred|error
     error: str = ""
+    #: Hints handed to the proposer as context (note/identity), and why any
+    #: were dropped. Context only: policy decides what is applied.
+    hints_used: list[dict[str, Any]] = field(default_factory=list)
+    hints_ignored: list[str] = field(default_factory=list)
 
     def diff(self) -> dict[str, dict[str, Any]]:
         if not (self.policy and self.policy.applied):
@@ -71,6 +78,8 @@ class PartnerOutcome:
             "rejected": [{"field": f, "reason": r}
                          for f, r in (self.policy.rejected if self.policy else [])],
             "needs_review": self.needs_review(),
+            "hints_used": self.hints_used,
+            "hints_ignored": self.hints_ignored,
         }
 
 
@@ -81,6 +90,8 @@ class UpdatesReport:
     outcomes: list[PartnerOutcome] = field(default_factory=list)
     check_lines: list[str] = field(default_factory=list)
     redirect_lines: list[str] = field(default_factory=list)
+    #: partner slug -> events/camps/programs page hints (reported only).
+    event_source_hints: dict[str, list[dict[str, str]]] = field(default_factory=dict)
     quality: QualityReport | None = None
     consolidated: bool = False
     state_saved: bool = False
@@ -122,6 +133,13 @@ class UpdatesReport:
                            f"{len(o.policy.applied_fields) if o.policy else 0} field(s) pending")
             if o.status == "error":
                 out.append(f"ERROR {o.slug}: {o.error}")
+        for o in self.outcomes:
+            out.extend(f"HINT {o.slug} {h['kind']}: "
+                       f"{h.get('text') or h.get('name') or h.get('website')}"
+                       for h in o.hints_used)
+            out.extend(f"HINT {o.slug}: {why}" for why in o.hints_ignored)
+        for s, items in sorted(self.event_source_hints.items()):
+            out.extend(f"EVENT SOURCE HINT {s} {i['role']}: {i['url']}" for i in items)
         if self.quality is not None:
             out.extend(self.quality.lines())
         out.append(
@@ -141,6 +159,7 @@ class UpdatesReport:
             "consolidated": self.consolidated,
             "partners": [o.to_dict() for o in self.outcomes],
             "needs_review": self.needs_review,
+            "event_source_hints": self.event_source_hints,
             "event_quality": self.quality.to_dict() if self.quality else None,
         }
 
@@ -173,11 +192,14 @@ def run_updates(
     all_partners: bool = False,
     clock: Callable[[], str] = _stamp,
     today: date | None = None,
+    hint_store: HintStore | None = None,
 ) -> UpdatesReport:
     report = UpdatesReport(dry_run=dry_run, no_llm=no_llm)
     check = run_checks(
         roster, history_store, cache_store, link_checker=link_checker,
-        all_partners=all_partners, slug=slug)
+        all_partners=all_partners, slug=slug,
+        hints_fp=(lambda s: hints_fingerprint(load_hints(hint_store, s)))
+        if hint_store is not None else None)
     report.check_lines = check.lines()
     by_slug = {r.get("slug"): r for r in roster}
     new_state = dict(check.new_state)
@@ -197,8 +219,13 @@ def run_updates(
             out.status = "flagged" if pc.flags else "unchanged"
             continue
         try:
+            # Note/identity hints are prompt context only. An identity hint
+            # counts only next to existing redirect/title evidence.
+            evidence = any(f.kind in ("website_moved", "name_mismatch") for f in pc.flags)
+            out.hints_used, out.hints_ignored = context_hints(
+                load_hints(hint_store, pc.slug), allow_identity=evidence)
             out.proposal, out.from_cache = propose_for_partner(
-                old, pc.flags, snap, cache_store, proposer)
+                old, pc.flags, snap, cache_store, proposer, hints=out.hints_used)
             out.policy = apply_policy(
                 old, out.proposal, flags=pc.flags, snapshot=snap)
             if out.policy.applied is None:
@@ -231,6 +258,18 @@ def run_updates(
     elif not dry_run:
         save_state(cache_store, new_state)
         report.state_saved = True
+
+    # Report-only: events/camps/programs page hints (no generic source is created).
+    if hint_store is not None:
+        for rec in sorted(roster, key=lambda r: r.get("slug", "")):
+            s = rec.get("slug", "")
+            if slug and s != slug:
+                continue
+            by_role = page_hint_urls(
+                load_hints(hint_store, s), rec.get("website"), EVENT_ROLES)
+            items = [{"role": r, "url": u} for r, urls in by_role.items() for u in urls]
+            if items:
+                report.event_source_hints[s] = items
 
     # Report-only event-quality checks: read the data store, never write it.
     try:

@@ -70,6 +70,16 @@ Logs go to `logs/profiles/` and `logs/updates/`. To inspect or undo a Haiku
 change (`history/partners/changes.jsonl`, the archived record, `partners put`)
 see "Profiles and updates jobs" in `docker/README.md`.
 
+### Updates sidecar (update-agent API)
+
+`partner_scrape.sidecar` is an HTTP service (Starlette/uvicorn, install with
+`uv sync --extra sidecar`) that lets partners propose corrections to their
+listings through a chat agent; accepted changes are written with an audited
+actor. It ships as its own slim image (`docker/Dockerfile.sidecar`) and runs as
+the `updates` service at `https://updates.jtlapp.net`. Its secrets bundle
+(`make-secrets.sh --updates`), `UPDATES_*` environment variables, deployment,
+operations and cost controls are in [`docker/README.md`](docker/README.md#updates-sidecar).
+
 ### Configure
 
 Cache and published data live in the DigitalOcean Spaces bucket

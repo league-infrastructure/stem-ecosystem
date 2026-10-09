@@ -332,6 +332,7 @@ def run(
     dry_run: bool = False,
     max_source_workers: int = DEFAULT_MAX_SOURCE_WORKERS,
     image_resolver: Callable[[str], str] | None = None,
+    hint_store: Any = None,
 ) -> list[dict[str, Any]]:
     """Run the full aggregator engine end-to-end: Registry -> Adapters ->
     (empty) Enrichers -> Normalize -> Export.
@@ -626,13 +627,31 @@ def run(
         # write path sprint 020 never gave that equivalent.
         resolved_image_resolver = EventImageDownloader(get_data_store()).download
 
+    # Exclude hints (sprint 044 ticket 006): per-partner predicates handed to
+    # normalize, which drops matching events and counts them per partner.
+    from partner_scrape.hints import exclude_matcher, load_hints
+
+    exclude_matchers = {}
+    if hint_store is not None:
+        for rec in raw_partners:
+            slug = rec.get("slug") or ""
+            matcher = exclude_matcher(load_hints(hint_store, slug)) if slug else None
+            if matcher is not None:
+                exclude_matchers[slug] = matcher
+    excluded_counts: dict[str, int] = {}
+
     opportunities = normalize_run(
         events,
         raw_partners,
+        exclude_matchers=exclude_matchers,
+        excluded_counts=excluded_counts,
         source_org_names=source_org_names,
         source_taxonomy_defaults=source_taxonomy_defaults,
         image_resolver=resolved_image_resolver,
     )
+    for hint_slug, n in sorted(excluded_counts.items()):
+        # Printed (not just logged) so the line lands in the run log.
+        print(f"HINT EXCLUDED {hint_slug}: {n} event(s) dropped by exclude hints")
     active_reporter.record_opportunities(opportunities)
 
     # Persistent per-partner accumulation (sprint 009 ticket 003, issue

@@ -16,12 +16,17 @@ dependencies = [
 
 [project.optional-dependencies]
 headless = ["playwright>=1.40"]
+sidecar = [
+    "starlette>=1.7.0",
+    "uvicorn>=0.54.0",
+]
 
 [project.scripts]
 partner-scrape = "partner_scrape.cli:main"
 
 [dependency-groups]
 dev = [
+    "httpx>=0.28.1",
     "moto[s3]>=5.2.3",
     "pytest>=8.0",
 ]

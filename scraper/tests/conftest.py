@@ -17,6 +17,7 @@ def _local_storage_locations(tmp_path, monkeypatch):
     monkeypatch.setenv("SCRAPE_CACHE_DIR", str(tmp_path / "cache"))
     monkeypatch.setenv("PARTNER_SCRAPE_DATA_DIR", str(tmp_path / "data"))
     monkeypatch.setenv("PARTNER_SCRAPE_HISTORY_DIR", str(tmp_path / "history"))
+    monkeypatch.setenv("PARTNER_SCRAPE_HINTS_DIR", str(tmp_path / "hints"))
     # No default location may point at the real home dir, CWD or repo:
     monkeypatch.setenv("SITE_DIR", str(tmp_path / "site"))
     monkeypatch.setenv("PARTNER_SCRAPE_EVENT_DB", str(tmp_path / "events.db"))

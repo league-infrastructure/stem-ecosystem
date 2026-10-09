@@ -1,9 +1,11 @@
 ---
 id: '004'
 title: 'Abuse and cost controls: limits, spend cap, Turnstile'
-status: open
-use-cases: [SUC-005]
-depends-on: ["002"]
+status: done
+use-cases:
+- SUC-005
+depends-on:
+- '002'
 github-issue: ''
 issue: 83-update-agent-sidecar-and-scraping-hints.md
 completes_issue: false
@@ -20,11 +22,11 @@ See architecture-update.md for the design and API contract.
 
 ## Acceptance Criteria
 
-- [ ] 429 with Retry-After when limits exceeded; 413 for long messages; session ends at turn cap
-- [ ] Daily spend counter persisted per UTC day in the history store, survives restart; new sessions refused with `spend_cap_reached` at cap
-- [ ] Turnstile enforced only when secret configured, verifier injected (fake in tests)
-- [ ] All thresholds configurable via env with documented defaults
-- [ ] Tests pass (`uv run pytest` from scraper/)
+- [x] 429 with Retry-After when limits exceeded; 413 for long messages; session ends at turn cap
+- [x] Daily spend counter persisted per UTC day in the history store, survives restart; new sessions refused with `spend_cap_reached` at cap
+- [x] Turnstile enforced only when secret configured, verifier injected (fake in tests)
+- [x] All thresholds configurable via env with documented defaults
+- [x] Tests pass (`uv run pytest` from scraper/)
 
 ## Implementation Plan
 

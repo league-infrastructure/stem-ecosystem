@@ -1,7 +1,11 @@
 #!/usr/bin/env bash
 # Build the SCRAPER_SECRETS_B64 bundle from a .env file.
 #
-#   scraper/docker/make-secrets.sh [path-to-.env]   # default: repo-root .env
+#   scraper/docker/make-secrets.sh [--updates] [path-to-.env]   # default: repo-root .env
+#
+# --updates builds the (smaller) bundle for the updates sidecar instead:
+# ANTHROPIC_API_KEY and the DO_SPACES keys, plus OPENROUTER_API_KEY and
+# TURNSTILE_SECRET (and IP_HASH_SALT) when present.
 #
 # Prints a single line of base64 on stdout. Warnings (key names only, never
 # values) go to stderr. Use it like:
@@ -11,6 +15,11 @@ set -euo pipefail
 
 REQUIRED=(DO_SPACES_ACCESS_KEY DO_SPACES_SECRET_KEY ANTHROPIC_API_KEY LEAGUESYNC_API_KEY TBA_KEY)
 OPTIONAL=(ROBOTEVENTS_KEY)
+if [ "${1:-}" = "--updates" ]; then
+  shift
+  REQUIRED=(DO_SPACES_ACCESS_KEY DO_SPACES_SECRET_KEY ANTHROPIC_API_KEY)
+  OPTIONAL=(OPENROUTER_API_KEY TURNSTILE_SECRET IP_HASH_SALT)
+fi
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 env_file="${1:-$here/../../.env}"

@@ -43,7 +43,8 @@ import logging
 import sys
 from pathlib import Path
 
-from partner_scrape.config import get_data_store
+from partner_scrape.config import get_data_store, get_hints_store
+from partner_scrape.hints import HintStore
 from partner_scrape.export import publish
 from partner_scrape.export.schema_doc import publish_schema_doc
 from partner_scrape.enrich.cache import EnrichmentCache
@@ -545,6 +546,8 @@ def _run_profiles(args: argparse.Namespace) -> int:
     from partner_scrape.partners.records import load_roster
     from partner_scrape.profiles.job import run_profiles
 
+    from partner_scrape.hints import HintStore
+
     redirect_log = RedirectLog()
     roster = load_roster(config.get_data_store(), validate=False)
     report = run_profiles(
@@ -554,6 +557,7 @@ def _run_profiles(args: argparse.Namespace) -> int:
         slug=args.slug,
         limit=args.limit,
         redirect_log=redirect_log,
+        hint_store=HintStore(config.get_hints_store()),
     )
     for line in report.lines():
         print(line)
@@ -582,6 +586,7 @@ def _add_updates_subcommand(subparsers: argparse._SubParsersAction) -> None:
 
 def _run_updates(args: argparse.Namespace) -> int:
     from partner_scrape import config
+    from partner_scrape.hints import HintStore
     from partner_scrape.partners.records import load_roster
     from partner_scrape.partners.writer import PartnerWriter
     from partner_scrape.updates.checks import fetcher_link_checker
@@ -610,6 +615,7 @@ def _run_updates(args: argparse.Namespace) -> int:
         max_changes=args.max_changes,
         slug=args.slug,
         all_partners=args.all,
+        hint_store=HintStore(config.get_hints_store()),
     )
     for line in report.lines():
         print(line)
@@ -855,6 +861,7 @@ def main(argv: list[str] | None = None) -> int:
         dry_run=args.dry_run,
         enrichers=enrichers,
         reporter=yield_reporter,
+        hint_store=HintStore(get_hints_store()),
         fetcher=PoliteFetcher(redirect_log=redirect_log),
         headless_fetcher_factory=lambda: PoliteFetcher(
             fetcher=PlaywrightFetcher(), redirect_log=redirect_log
