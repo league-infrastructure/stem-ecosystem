@@ -1,5 +1,6 @@
 ---
 status: pending
+sprint: '043'
 ---
 
 # Post-scrape partner-record update check, with Haiku for changed partners
