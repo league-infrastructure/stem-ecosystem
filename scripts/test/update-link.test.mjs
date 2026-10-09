@@ -14,3 +14,17 @@ test('encodes special characters', () => {
 test('falls back to bare /update without slug', () => {
   assert.equal(updateHref('/x', 'club', ''), '/x/update');
 });
+
+import { opportunityUpdateTarget } from '../../src/lib/updates/link.mjs';
+test('opportunity links to its partner when the partner record exists', () => {
+  assert.deepEqual(
+    opportunityUpdateTarget({ partner_id: 1, slug: 'opp' }, [{ id: 1, slug: 'p1' }]),
+    { type: 'partner', slug: 'p1' },
+  );
+});
+test('opportunity without a partner record links by its own slug', () => {
+  assert.deepEqual(
+    opportunityUpdateTarget({ partner_id: 99, slug: 'opp' }, [{ id: 1, slug: 'p1' }]),
+    { type: 'opportunity', slug: 'opp' },
+  );
+});

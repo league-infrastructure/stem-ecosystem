@@ -1,9 +1,12 @@
 ---
 id: '002'
 title: '/update page shell: explainer, no-JS fallback, listing picker'
-status: open
-use-cases: [SUC-002, SUC-005]
-depends-on: ["001"]
+status: done
+use-cases:
+- SUC-002
+- SUC-005
+depends-on:
+- '001'
 github-issue: ''
 issue: 84-update-page-and-request-update-links-on-the-site.md
 completes_issue: false
@@ -18,11 +21,11 @@ Create src/pages/update.astro using BaseLayout: explainer (we only publish what 
 
 ## Acceptance Criteria
 
-- [ ] Explainer and email visible without JS
-- [ ] Picker lists listings and navigates to /update?type=&slug=
-- [ ] Containers carry API base URL from env (default https://updates.jtlapp.net)
-- [ ] Two-panel layout, stacks under 768px
-- [ ] Headings/landmarks and labels accessible
+- [x] Explainer and email visible without JS
+- [x] Picker lists listings and navigates to /update?type=&slug=
+- [x] Containers carry API base URL from env (default https://updates.jtlapp.net)
+- [x] Two-panel layout, stacks under 768px
+- [x] Headings/landmarks and labels accessible
 
 ## Testing
 

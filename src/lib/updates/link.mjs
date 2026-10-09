@@ -5,3 +5,13 @@ export function updateHref(base, type, slug) {
   const q = new URLSearchParams({ type: String(type), slug: String(slug) });
   return `${b}/update?${q.toString()}`;
 }
+
+// Update-link target for an opportunity page. Prefer the owning partner (by
+// partner_id); when that partner record is missing, address the opportunity
+// itself, which the sidecar resolves directly by its slug.
+export function opportunityUpdateTarget(opp, partners) {
+  const partner = (partners || []).find((p) => p.id === opp.partner_id);
+  if (partner?.slug) return { type: 'partner', slug: partner.slug };
+  if (opp.slug) return { type: 'opportunity', slug: opp.slug };
+  return null;
+}
