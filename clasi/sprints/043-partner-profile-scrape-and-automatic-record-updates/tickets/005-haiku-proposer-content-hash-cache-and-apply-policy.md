@@ -1,7 +1,7 @@
 ---
 id: '005'
 title: Haiku proposer, content-hash cache, and apply policy
-status: in-progress
+status: done
 use-cases:
 - SUC-004
 depends-on:
@@ -20,12 +20,12 @@ completes_issue: false
 
 ## Acceptance Criteria
 
-- [ ] Proposer uses `claude-haiku-4-5-20251001` via the anthropic SDK (follow enrich/llm_client.py patterns: no explicit api_key, JSON-schema output_config), input = cached home/About/Contact text (trimmed) + current record + flags; output = per-field {value, confidence 0-1, reason} and a description in original wording (prompt forbids copying; a similarity check rejects descriptions sharing long verbatim runs with page text)
-- [ ] Results cached at `updates/<slug>/<sha256(pages + record + prompt version)>.json` in the scrape-cache store; unchanged content makes zero API calls (test with a counting fake)
-- [ ] Fake proposer for tests; tests never hit the network
-- [ ] Policy: auto-apply allowlist = name, website, phone, email, location, twitter, facebook, instagram, linkedin, description; logo changes report-only; latitude/longitude, organization_type, id, slug never auto-change
-- [ ] Policy: confidence >= 0.8 (configurable); never blank/empty a field; social fields: a dead link may be replaced with the site's current link but never removed unless the site links none for that network, and then it is report-only; resulting record must pass the record validator
-- [ ] Policy returns {applied: new record or None, applied_fields, rejected: [(field, reason)]} and is pure
+- [x] Proposer uses `claude-haiku-4-5-20251001` via the anthropic SDK (follow enrich/llm_client.py patterns: no explicit api_key, JSON-schema output_config), input = cached home/About/Contact text (trimmed) + current record + flags; output = per-field {value, confidence 0-1, reason} and a description in original wording (prompt forbids copying; a similarity check rejects descriptions sharing long verbatim runs with page text)
+- [x] Results cached at `updates/<slug>/<sha256(pages + record + prompt version)>.json` in the scrape-cache store; unchanged content makes zero API calls (test with a counting fake)
+- [x] Fake proposer for tests; tests never hit the network
+- [x] Policy: auto-apply allowlist = name, website, phone, email, location, twitter, facebook, instagram, linkedin, description; logo changes report-only; latitude/longitude, organization_type, id, slug never auto-change
+- [x] Policy: confidence >= 0.8 (configurable); never blank/empty a field; social fields: a dead link may be replaced with the site's current link but never removed unless the site links none for that network, and then it is report-only; resulting record must pass the record validator
+- [x] Policy returns {applied: new record or None, applied_fields, rejected: [(field, reason)]} and is pure
 
 ## Implementation Plan
 
