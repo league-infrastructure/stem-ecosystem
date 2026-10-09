@@ -1,7 +1,7 @@
 ---
 id: '042'
 title: Partner records in the bucket, and run logs
-status: planning-docs
+status: ticketing
 branch: sprint/042-partner-records-in-the-bucket-and-run-logs
 use-cases: [SUC-001, SUC-002, SUC-003, SUC-004, SUC-005]
 issues: [77-per-partner-records-in-the-bucket-as-the-source-of-truth.md, 72-capture-every-scraper-run-to-a-logs-directory-in-the-bucket.md]
@@ -81,7 +81,8 @@ Programmers never read the real `.env`. Ticket 007 is run/supervised by the team
 4. `partner-scrape partners consolidate`, then `partner-scrape partners verify-migration --baseline <git show HEAD:src/data/partners.json>`.
 5. `node scripts/fetch-data.mjs`, `npm run build`, compare site output.
 6. Then `git rm` roster and logos, gitignore, commit.
-7. Build/push new image and redeploy swarm (not part of this repo's push rules; team lead decides); after verifying, open a follow-up for deleting `cache/partner_log/`.
+7. Build the new amd64 image, push it, and redeploy the swarm stack BEFORE the old image's Monday 03:00 PT scrape (see scraper/docker/README.md). If the old image wrote to `cache/partner_log` in the interim, re-run the (idempotent) copy.
+8. After the new image is verified, file a follow-up issue to delete `cache/partner_log/` (out of scope here).
 
 ## GitHub Issues
 
@@ -103,6 +104,6 @@ Programmers never read the real `.env`. Ticket 007 is run/supervised by the team
 | 004 | Scraper reads roster from the bucket; partner_log to history | 003 |
 | 005 | Migration tooling and equality verification | 003, 004 |
 | 006 | Site reads fetched roster and logos | 003 |
-| 007 | Real migration run, cutover, docs (team-lead) | 001, 004, 005, 006 |
+| 007 | Real migration, cutover, redeploy (team-lead run) | 001, 004, 005, 006 |
 
 Tickets execute serially in the order listed.
