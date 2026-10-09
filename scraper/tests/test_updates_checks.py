@@ -4,6 +4,7 @@ from partner_scrape.profiles.snapshot import page_entry, write_snapshot_if_chang
 from partner_scrape.storage import LocalStore
 from partner_scrape.updates.checks import (
     Severity,
+    fetcher_link_checker,
     compare_partner,
     load_state,
     names_match,
@@ -192,3 +193,59 @@ def test_run_checks_changed_hash_reexamines(tmp_path):
     snap["pages"]["home"]["sha256"] = "changed"
     write_snapshot_if_changed(hist, "cmod", snap)
     assert run_checks([CMOD_RECORD], hist, cache).examined == 1
+
+
+# ------------------------------------------- fetcher_link_checker (043-011 fix)
+
+class _Resp:
+    def __init__(self, status):
+        self.status = status
+
+
+class _Fetcher:
+    def __init__(self, status=None, exc=None):
+        self.status, self.exc, self.calls = status, exc, []
+
+    def get(self, url, **kw):
+        self.calls.append(url)
+        if self.exc:
+            raise self.exc
+        return _Resp(self.status)
+
+
+def test_checker_exception_is_unknown():
+    assert fetcher_link_checker(_Fetcher(exc=RuntimeError("boom")))("https://x.org/a") is None
+
+
+def test_checker_robots_disallowed_is_unknown():
+    from partner_scrape.fetch.robots import RobotsDisallowed
+
+    f = _Fetcher(exc=RobotsDisallowed("no"))
+    assert fetcher_link_checker(f)("https://example.org/a") is None
+
+
+def test_checker_timeout_and_transport_error_unknown():
+    assert fetcher_link_checker(_Fetcher(exc=TimeoutError()))("https://example.org") is None
+    assert fetcher_link_checker(_Fetcher(status=0))("https://example.org") is None
+    assert fetcher_link_checker(_Fetcher(status=403))("https://example.org") is None
+
+
+def test_checker_404_410_dead_on_non_social_host():
+    for st in (404, 410):
+        assert fetcher_link_checker(_Fetcher(status=st))("https://example.org/p") is False
+    assert fetcher_link_checker(_Fetcher(status=200))("https://example.org/p") is True
+
+
+def test_checker_social_hosts_unknown_and_not_fetched():
+    f = _Fetcher(status=404)
+    chk = fetcher_link_checker(f)
+    for u in ("https://www.facebook.com/x", "https://instagram.com/x",
+              "https://twitter.com/x", "https://x.com/x", "https://www.linkedin.com/company/x"):
+        assert chk(u) is None
+    assert f.calls == []
+
+
+def test_unknown_result_never_flags_dead():
+    rec = dict(CMOD_RECORD, facebook="https://www.facebook.com/old")
+    flags = compare_partner(rec, cmod_snapshot(), lambda u: None)
+    assert not any(f.dead or f.kind == "social_dead" or "is dead" in f.message for f in flags)

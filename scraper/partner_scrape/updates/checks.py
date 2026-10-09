@@ -48,7 +48,7 @@ class Flag:
     record_value: str = ""
     observed_value: str = ""
     #: Social flags only: the link checker reported the record's link dead
-    #: (404/410/exception). Lets the apply policy decide without new I/O.
+    #: (an actual 404/410). Lets the apply policy decide without new I/O.
     dead: bool = False
 
     def to_dict(self) -> dict[str, Any]:
@@ -65,19 +65,42 @@ def needs_llm(flags: Iterable[Flag]) -> bool:
 LinkChecker = Callable[[str], "bool | None"]
 
 
-def fetcher_link_checker(fetcher) -> LinkChecker:
-    """Liveness via a PoliteFetcher GET. Dead = connection error, 404 or 410.
+#: Hosts whose plain, logged-out fetches are unreliable even for 404 (robots
+#: disallow, login redirects, bot walls, fake 404s). Always "unknown".
+SOCIAL_HOSTS = frozenset({
+    "facebook.com", "fb.com", "instagram.com", "twitter.com", "x.com",
+    "linkedin.com",
+})
 
-    Other statuses (403, 429, 999, login walls) are social-network bot
-    defenses and read as alive/unknown, never as dead.
+
+def _is_social_host(url: str) -> bool:
+    host = host_of(url)
+    return any(host == d or host.endswith("." + d) for d in SOCIAL_HOSTS)
+
+
+def fetcher_link_checker(fetcher) -> LinkChecker:
+    """Liveness via a PoliteFetcher GET.
+
+    Dead ONLY on an actual HTTP 404 or 410 from a non-social host. Everything
+    else is unknown (``None``), never dead: exceptions (including
+    ``RobotsDisallowed``), timeouts and transport errors, 403/429/999 bot
+    walls, and every social-network host (facebook, instagram, twitter/x,
+    linkedin), which are not fetched at all because logged-out bots get
+    robots blocks, login redirects and spurious 404s there.
     """
 
     def check(url: str) -> bool | None:
+        if _is_social_host(url):
+            return None
         try:
             resp = fetcher.get(url, label="liveness")
-        except Exception:  # noqa: BLE001
+        except Exception:  # noqa: BLE001  robots disallow, timeout, transport
+            return None
+        if resp.status in (404, 410):
             return False
-        return resp.status not in (404, 410)
+        if 200 <= resp.status < 400:
+            return True
+        return None  # 0 (transport error), 403, 429, 5xx, ...: unknown
 
     return check
 

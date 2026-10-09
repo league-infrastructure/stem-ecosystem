@@ -333,15 +333,13 @@ def test_live_correct_network_link_is_needs_review(net, cur, new):
     assert "not reported dead" in r.needs_review[0]["reason"]
 
 
-@pytest.mark.parametrize("status", [404, 410, "exception"])
+@pytest.mark.parametrize("status", [404, 410])
 def test_dead_current_link_allows_same_network_replacement(status):
     cur, new = "https://facebook.com/old", "https://facebook.com/new"
     rec = dict(CMOD_RECORD, facebook=cur)
     snap = cmod_snapshot()
 
-    def checker(url):  # mirrors fetcher_link_checker's dead rules
-        if status == "exception":
-            return False
+    def checker(url):  # mirrors fetcher_link_checker's dead rule: 404/410 only
         return status not in (404, 410)
 
     fl = compare_partner(rec, snap, checker)
@@ -367,3 +365,25 @@ def test_dead_flag_accepted_as_dict():
     r = apply_policy(dict(CMOD_RECORD, facebook="https://facebook.com/old"),
                      Proposal([fp("facebook", "https://facebook.com/new")]), flags=fl)
     assert r.applied["facebook"] == "https://facebook.com/new"
+
+
+def test_challenge_island_like_case_with_real_checker_is_needs_review():
+    """Social hosts are unknown to the real checker (robots/bot walls), so a
+    working link is never reported dead and the replacement is not applied."""
+    from partner_scrape.fetch.robots import RobotsDisallowed
+    from partner_scrape.updates.checks import fetcher_link_checker
+
+    class Blocked:
+        def get(self, url, **kw):
+            raise RobotsDisallowed(url)
+
+    cur = "https://instagram.com/challengeislandsdcoastal"
+    rec = dict(CMOD_RECORD, instagram=cur)
+    snap = cmod_snapshot()
+    fl = compare_partner(rec, snap, fetcher_link_checker(Blocked()))
+    assert not any(f.dead for f in fl)
+    assert not any(f.kind == "social_dead" for f in fl)
+    assert not any("is dead" in f.message for f in fl)
+    r = apply_policy(rec, Proposal([fp("instagram", "https://instagram.com/ci_hq")]),
+                     flags=fl, snapshot=snap)
+    assert r.applied is None and review_fields(r) == ["instagram"]
