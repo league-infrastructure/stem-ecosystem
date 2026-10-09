@@ -1,7 +1,7 @@
 ---
 id: '003'
 title: profiles job and private snapshots
-status: in-progress
+status: done
 use-cases:
 - SUC-002
 depends-on:
@@ -21,12 +21,12 @@ The `profiles` job: for every roster partner with a website, fetch home + About 
 
 ## Acceptance Criteria
 
-- [ ] `partner-scrape profiles [--slug S] [--limit N]` iterates the bucket Roster; partners without a website are listed in the report and skipped
-- [ ] Fetch uses PoliteFetcher (robots, throttle, cache, headless fallback); a failure for one partner/page is recorded and never aborts the run
-- [ ] Snapshot at `history/profiles/<slug>/profile.json` in the history (private) store: facts, page URLs, per-page sha256 of body, final_url, redirect chain, fetched_at, status; overwritten each run; written only when content changed or nothing exists
-- [ ] Unchanged pages give identical hashes across runs
-- [ ] Notable redirects (ticket 001) appear in the printed report; summary counts line printed (partners, fetched, failed, redirects, skipped)
-- [ ] No LLM; tests with fake fetcher and LocalStore; snapshot is never written to a public-read store (test)
+- [x] `partner-scrape profiles [--slug S] [--limit N]` iterates the bucket Roster; partners without a website are listed in the report and skipped
+- [x] Fetch uses PoliteFetcher (robots, throttle, cache, headless fallback); a failure for one partner/page is recorded and never aborts the run
+- [x] Snapshot at `history/profiles/<slug>/profile.json` in the history (private) store: facts, page URLs, per-page sha256 of body, final_url, redirect chain, fetched_at, status; overwritten each run; written only when content changed or nothing exists
+- [x] Unchanged pages give identical hashes across runs
+- [x] Notable redirects (ticket 001) appear in the printed report; summary counts line printed (partners, fetched, failed, redirects, skipped)
+- [x] No LLM; tests with fake fetcher and LocalStore; snapshot is never written to a public-read store (test)
 
 ## Implementation Plan
 
