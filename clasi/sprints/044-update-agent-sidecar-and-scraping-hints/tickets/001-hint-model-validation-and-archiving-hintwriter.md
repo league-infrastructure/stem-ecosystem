@@ -1,8 +1,10 @@
 ---
 id: '001'
 title: Hint model, validation and archiving HintWriter
-status: open
-use-cases: [SUC-002, SUC-004]
+status: done
+use-cases:
+- SUC-002
+- SUC-004
 depends-on: []
 github-issue: ''
 issue: 83-update-agent-sidecar-and-scraping-hints.md
@@ -20,12 +22,12 @@ See architecture-update.md for the design and API contract.
 
 ## Acceptance Criteria
 
-- [ ] Kinds page/exclude/note/identity validated; unknown kinds, oversize text, bad regex and too many hints rejected
-- [ ] Page URL host must equal or be a subdomain of the entity's website domain(s)
-- [ ] Identity website accepted only if an injected fetcher shows the record's current website redirects to that host; no private-IP fetches
-- [ ] `hints/<slug>.json` written private; prior version archived to `history/hints/<slug>/<ts>.json`; line appended to `history/hints/changes.jsonl` with actor `update-agent:<session>`; identical write is a no-op
-- [ ] Read helper returns empty hints when file absent
-- [ ] Tests pass (`uv run pytest` from scraper/)
+- [x] Kinds page/exclude/note/identity validated; unknown kinds, oversize text, bad regex and too many hints rejected
+- [x] Page URL host must equal or be a subdomain of the entity's website domain(s)
+- [x] Identity website accepted only if an injected fetcher shows the record's current website redirects to that host; no private-IP fetches
+- [x] `hints/<slug>.json` written private; prior version archived to `history/hints/<slug>/<ts>.json`; line appended to `history/hints/changes.jsonl` with actor `update-agent:<session>`; identical write is a no-op
+- [x] Read helper returns empty hints when file absent
+- [x] Tests pass (`uv run pytest` from scraper/)
 
 ## Implementation Plan
 
