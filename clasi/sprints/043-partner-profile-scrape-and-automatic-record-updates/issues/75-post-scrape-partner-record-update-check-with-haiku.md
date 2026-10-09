@@ -1,6 +1,12 @@
 ---
-status: pending
+status: in-progress
 sprint: '043'
+tickets:
+- 043-004
+- 043-005
+- 043-006
+- 043-008
+- 043-009
 ---
 
 # Post-scrape partner-record update check, with Haiku for changed partners

@@ -1,6 +1,11 @@
 ---
-status: pending
+status: in-progress
 sprint: '043'
+tickets:
+- 043-002
+- 043-003
+- 043-008
+- 043-009
 ---
 
 # Weekly scrape of partner home, About, and Contact pages
