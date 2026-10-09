@@ -4,6 +4,7 @@
 // slug is Club.club_id itself (already doubles as this Club's stable URL
 // slug, matching Team.team_id's/Place.place_id's identical convention).
 import BaseLayout from '../../layouts/BaseLayout.astro';
+import UpdateLink from '../../components/UpdateLink.astro';
 import clubsData from '../../data/clubs.json';
 
 export function getStaticPaths() {
@@ -84,6 +85,7 @@ const isActive = club.status === 'active';
             </p>
           </div>
         )}
+        <UpdateLink type="club" slug={club.club_id} />
       </div>
 
       <aside class="detail-sidebar">

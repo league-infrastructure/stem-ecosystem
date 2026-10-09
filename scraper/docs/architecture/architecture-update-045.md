@@ -1,6 +1,6 @@
 ---
-sprint: "045"
-status: draft
+sprint: '045'
+status: done
 ---
 
 # Architecture Update -- Sprint 045: Update page and request-update links on the site

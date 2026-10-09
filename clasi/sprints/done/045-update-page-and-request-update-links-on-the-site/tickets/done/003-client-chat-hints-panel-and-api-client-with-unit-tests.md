@@ -1,9 +1,13 @@
 ---
 id: '003'
 title: Client chat, hints panel and API client with unit tests
-status: open
-use-cases: [SUC-003, SUC-004, SUC-005]
-depends-on: ["002"]
+status: done
+use-cases:
+- SUC-003
+- SUC-004
+- SUC-005
+depends-on:
+- '002'
 github-issue: ''
 issue: 84-update-page-and-request-update-links-on-the-site.md
 completes_issue: false
@@ -18,11 +22,11 @@ Implement src/lib/updates/api-client.mjs (injected fetch/base; start, send, conf
 
 ## Acceptance Criteria
 
-- [ ] Greeting and replies shown; hints card re-rendered each turn
-- [ ] Confirm shows summary and 'takes effect after the next scheduled scrape'; saved:false shows no-changes message
-- [ ] Each error code gives friendly message plus fallback email; guard/turn_cap end disables input
-- [ ] Unit tests with fake fetch cover all codes and hint formatting; `npm test` passes
-- [ ] No innerHTML with server text
+- [x] Greeting and replies shown; hints card re-rendered each turn
+- [x] Confirm shows summary and 'takes effect after the next scheduled scrape'; saved:false shows no-changes message
+- [x] Each error code gives friendly message plus fallback email; guard/turn_cap end disables input
+- [x] Unit tests with fake fetch cover all codes and hint formatting; `npm test` passes
+- [x] No innerHTML with server text
 
 ## Testing
 
