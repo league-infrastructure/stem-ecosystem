@@ -1,9 +1,13 @@
 ---
 id: '003'
 title: Client chat, hints panel and API client with unit tests
-status: open
-use-cases: [SUC-003, SUC-004, SUC-005]
-depends-on: ["002"]
+status: in-progress
+use-cases:
+- SUC-003
+- SUC-004
+- SUC-005
+depends-on:
+- '002'
 github-issue: ''
 issue: 84-update-page-and-request-update-links-on-the-site.md
 completes_issue: false

@@ -72,6 +72,8 @@ const listings = [
 </BaseLayout>
 
 <script>
+  import { initUpdateChat } from '../scripts/update-chat';
+
   const page = document.querySelector<HTMLElement>('.update-page')!;
   const params = new URLSearchParams(location.search);
   const type = params.get('type');
@@ -79,10 +81,10 @@ const listings = [
   const base = page.dataset.base || '';
 
   if (type && slug) {
-    // Chat mode: ticket 003 wires the chat and hints panels.
     document.getElementById('update-panels')!.hidden = false;
     page.dataset.type = type;
     page.dataset.slug = slug;
+    initUpdateChat(page, type, slug);
   } else {
     const listings: { type: string; slug: string; name: string }[] = JSON.parse(
       document.getElementById('listing-index')!.textContent || '[]',
@@ -132,6 +134,18 @@ const listings = [
   .update-panels { display: grid; grid-template-columns: 3fr 2fr; gap: 24px; }
   .update-chat, .update-hints { background: var(--white); border-radius: var(--radius); box-shadow: var(--shadow); padding: 16px 18px; min-height: 280px; }
   .chat-transcript { min-height: 200px; }
+  .chat-msg { margin: 0 0 12px; }
+  .chat-text { margin: 2px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .chat-form textarea { width: 100%; padding: 10px 12px; font-size: 16px; border: 1px solid var(--border-light); border-radius: var(--radius); font-family: inherit; }
+  .chat-form label { display: block; font-weight: 600; margin: 12px 0 6px; }
+  .chat-send, .hints-confirm, .chat-restart, .chat-retry { padding: 10px 16px; font-size: 16px; cursor: pointer; border: 1px solid var(--border-light); border-radius: var(--radius); background: var(--white); }
+  .chat-send:disabled, .hints-confirm:disabled { opacity: 0.5; cursor: not-allowed; }
+  .chat-hint, .chat-turns, .chat-status { font-size: 14px; margin: 6px 0; }
+  .chat-notice { padding: 8px 10px; border: 1px solid var(--border-light); border-radius: var(--radius); font-size: 14px; }
+  .hints-sub { font-size: 16px; margin: 12px 0 4px; }
+  .hints-list { padding-left: 18px; margin: 0 0 8px; }
+  .hints-list li { overflow-wrap: anywhere; margin-bottom: 4px; }
+  .hints-done { font-weight: 600; }
   @media (max-width: 767px) {
     .update-panels { grid-template-columns: 1fr; }
   }
