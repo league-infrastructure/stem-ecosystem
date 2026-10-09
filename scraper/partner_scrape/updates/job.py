@@ -15,7 +15,9 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
 from typing import Any, Callable
 
-from partner_scrape.hints import EVENT_ROLES, HintStore, context_hints, load_hints, page_hint_urls
+from partner_scrape.hints import (
+    EVENT_ROLES, HintStore, context_hints, hints_fingerprint, load_hints, page_hint_urls,
+)
 from partner_scrape.partners.consolidate import consolidate
 from partner_scrape.partners.writer import PartnerWriter
 from partner_scrape.profiles.snapshot import read_snapshot
@@ -195,7 +197,9 @@ def run_updates(
     report = UpdatesReport(dry_run=dry_run, no_llm=no_llm)
     check = run_checks(
         roster, history_store, cache_store, link_checker=link_checker,
-        all_partners=all_partners, slug=slug)
+        all_partners=all_partners, slug=slug,
+        hints_fp=(lambda s: hints_fingerprint(load_hints(hint_store, s)))
+        if hint_store is not None else None)
     report.check_lines = check.lines()
     by_slug = {r.get("slug"): r for r in roster}
     new_state = dict(check.new_state)

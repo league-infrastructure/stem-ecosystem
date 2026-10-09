@@ -141,6 +141,8 @@ class TestArgumentWiring:
         # Sprint 043: redirect-collecting fetchers are always supplied.
         assert captured.pop("fetcher").redirect_log is not None
         assert callable(captured.pop("headless_fetcher_factory"))
+        # Sprint 044: exclude hints are read from the hints store.
+        assert captured.pop("hint_store") is not None
         assert captured == {
             "registry_dir": None,
             "site_dir": None,

@@ -43,7 +43,8 @@ import logging
 import sys
 from pathlib import Path
 
-from partner_scrape.config import get_data_store
+from partner_scrape.config import get_data_store, get_hints_store
+from partner_scrape.hints import HintStore
 from partner_scrape.export import publish
 from partner_scrape.export.schema_doc import publish_schema_doc
 from partner_scrape.enrich.cache import EnrichmentCache
@@ -860,6 +861,7 @@ def main(argv: list[str] | None = None) -> int:
         dry_run=args.dry_run,
         enrichers=enrichers,
         reporter=yield_reporter,
+        hint_store=HintStore(get_hints_store()),
         fetcher=PoliteFetcher(redirect_log=redirect_log),
         headless_fetcher_factory=lambda: PoliteFetcher(
             fetcher=PlaywrightFetcher(), redirect_log=redirect_log
