@@ -62,20 +62,22 @@ SITE_DATA_BASE_URL=https://... npm run fetch-data  # override the source URL
 - CI (`deploy.yml`, `build.yml`) **always** runs `npm run fetch-data` before building, so every
   deploy ships the latest published data. Re-run the deploy after a scrape to publish it.
 - The fetch is staged and validated before anything is replaced, so a failed fetch leaves the
-  previous data intact. It never writes the hand-curated `src/data/partners.json`.
+  previous data intact. It also builds `src/data/partners.json` and `public/images/logos/<slug>.<ext>`
+  from the bucket's partner records (see below).
 
 | Path | Owner | Notes |
 |---|---|---|
-| `src/data/partners.json` | **Humans — edit here** | Hand-curated partner roster. A pipeline *input*, not an output. |
+| `src/data/partners.json` | Bucket records | Built by fetch-data from the bucket's consolidated `data/partners.json` (events urls dropped, `logo_src` rewritten to the bare logo filename). Gitignored once sprint 042 ticket 007 removes the tracked copy. **Do not hand-edit** — edit the record: `partner-scrape partners get/put/add <slug>` then `partners consolidate`. |
 | `src/data/opportunities.json`, `teams.json`, `places.json`, `clubs.json`, `ads.json`, `scrape-meta.json` | Pipeline | Fetched from the bucket; gitignored; do not hand-edit. |
 | `src/data/yield-history.json` | Pipeline | Fetched, gitignored. Per-run state used to detect source yield regressions. |
 | `public/data/**` | Pipeline | Fetched, gitignored. The published data contract (partner roster + per-partner event files). |
 | `public/images/opportunities/` | Pipeline | Fetched, gitignored. Self-hosted event images, content-hash named. |
-| `public/images/logos/` | Pipeline | Partner logos. |
+| `public/images/logos/` | Bucket records | Logos fetched from `data/partners/<slug>/logo.<ext>` as `<slug>.<ext>` (added, never deleted). `default-partner.svg` is the site's own fallback and stays in git. |
 
-The curated roster lives here because the scraper reads it from its `--site-dir`, which is
-this repo's root. Keeping a second copy elsewhere is what caused runs to join against a stale
-roster and silently drop partner geocodes and logos.
+The curated roster's source of truth is the bucket (`data/partners/<slug>/partner.json`,
+changes archived under `history/partners/`); the scraper reads it from there, so there is one
+copy and no rebuild is needed to change it. `logo_src` in `opportunities.json` and `ads.json` is
+rewritten by fetch-data the same way, so existing pages need no changes.
 
 ## Deployment
 

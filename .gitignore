@@ -36,7 +36,12 @@ npm-debug.log*
 .clasi/log/
 
 # Generated site data, fetched from the bucket by scripts/fetch-data.mjs
-# (src/data/partners.json is hand-curated and stays tracked)
+# The roster and logos come from the bucket's data/partners/<slug>/ records too.
+# (Still tracked until sprint 042 ticket 007 git-rm's them after the real migration;
+# default-partner.svg is the site's own fallback and always stays in git.)
+/src/data/partners.json
+/public/images/logos/*
+!/public/images/logos/default-partner.svg
 /src/data/opportunities.json
 /src/data/scrape-meta.json
 /src/data/ads.json
