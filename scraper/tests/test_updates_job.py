@@ -80,6 +80,21 @@ def test_cmod_end_to_end_applies_name_and_website(env):
     assert "APPLIED cmod name:" in text and "REDIRECT cmod home" in text and "FLAG cmod" in text
 
 
+def test_needs_review_in_stdout_and_json(env):
+    prop = FakeProposer({"cmod": Proposal([
+        fp("phone", "760-233-7755"), fp("logo_src", "https://visitcmod.org/l.png"),
+        fp("name", "Children's Museum of Discovery")])})
+    rep = env.run(prop, dry_run=True)
+    line = next(l for l in rep.lines() if l.startswith("NEEDS REVIEW cmod phone"))
+    assert "'(619) 233-5757' -> '760-233-7755'" in line
+    assert "needs_review=2" in rep.lines()[-1]
+    data = json.loads(env.history.read_text(rep.report_key))
+    items = data["partners"][0]["needs_review"]
+    assert {(i["partner"], i["field"]) for i in items} == {("cmod", "phone"), ("cmod", "logo_src")}
+    assert all({"current", "proposed", "reason"} <= set(i) for i in items)
+    assert data["needs_review"] == items
+
+
 def test_dry_run_writes_nothing_but_proposes(env):
     before = env.data.read_text(record_key("cmod"))
     n = len(changes(env))

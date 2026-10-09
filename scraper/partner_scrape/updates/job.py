@@ -54,6 +54,10 @@ class PartnerOutcome:
         return {f: {"old": self.old.get(f), "new": new.get(f)}
                 for f in self.policy.applied_fields}
 
+    def needs_review(self) -> list[dict[str, Any]]:
+        return [dict(item, partner=self.slug)
+                for item in (self.policy.needs_review if self.policy else [])]
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "slug": self.slug,
@@ -66,6 +70,7 @@ class PartnerOutcome:
             "applied": self.diff(),
             "rejected": [{"field": f, "reason": r}
                          for f, r in (self.policy.rejected if self.policy else [])],
+            "needs_review": self.needs_review(),
         }
 
 
@@ -88,6 +93,10 @@ class UpdatesReport:
     def applied(self) -> list[PartnerOutcome]:
         return self._by("applied")
 
+    @property
+    def needs_review(self) -> list[dict[str, Any]]:
+        return [i for o in self.outcomes for i in o.needs_review()]
+
     def lines(self) -> list[str]:
         out = list(self.check_lines)
         out.extend(self.redirect_lines)
@@ -105,6 +114,9 @@ class UpdatesReport:
                     out.append(f"{tag} {o.slug} {f}: {d['old']!r} -> {d['new']!r}")
             if o.policy:
                 out.extend(f"REJECTED {o.slug} {f}: {r}" for f, r in o.policy.rejected)
+            out.extend(
+                f"NEEDS REVIEW {o.slug} {i['field']}: {i['current']!r} -> "
+                f"{i['proposed']!r}: {i['reason']}" for i in o.needs_review())
             if o.status == "deferred":
                 out.append(f"DEFERRED {o.slug}: per-run cap reached; "
                            f"{len(o.policy.applied_fields) if o.policy else 0} field(s) pending")
@@ -116,7 +128,8 @@ class UpdatesReport:
             f"updates{' (dry-run)' if self.dry_run else ''}"
             f"{' (no-llm)' if self.no_llm else ''}: examined={len(self.outcomes)} "
             f"applied={len(self._by('applied'))} would_apply={len(self._by('would_apply'))} "
-            f"deferred={len(self._by('deferred'))} errors={len(self._by('error'))} "
+            f"deferred={len(self._by('deferred'))} "
+            f"needs_review={len(self.needs_review)} errors={len(self._by('error'))} "
             f"consolidated={'yes' if self.consolidated else 'no'}")
         return out
 
@@ -127,6 +140,7 @@ class UpdatesReport:
             "no_llm": self.no_llm,
             "consolidated": self.consolidated,
             "partners": [o.to_dict() for o in self.outcomes],
+            "needs_review": self.needs_review,
             "event_quality": self.quality.to_dict() if self.quality else None,
         }
 
@@ -185,7 +199,8 @@ def run_updates(
         try:
             out.proposal, out.from_cache = propose_for_partner(
                 old, pc.flags, snap, cache_store, proposer)
-            out.policy = apply_policy(old, out.proposal)
+            out.policy = apply_policy(
+                old, out.proposal, flags=pc.flags, snapshot=snap)
             if out.policy.applied is None:
                 out.status = "unchanged"
                 continue

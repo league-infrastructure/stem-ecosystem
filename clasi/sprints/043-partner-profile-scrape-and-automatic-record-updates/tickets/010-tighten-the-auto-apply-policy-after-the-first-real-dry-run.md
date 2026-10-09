@@ -1,12 +1,12 @@
 ---
 id: '010'
 title: Tighten the auto-apply policy after the first real dry run
-status: open
+status: done
 use-cases:
 - SUC-003
 - SUC-004
 depends-on:
-- "008"
+- 008
 github-issue: ''
 issue: 75-post-scrape-partner-record-update-check-with-haiku.md
 completes_issue: false
@@ -37,18 +37,18 @@ Needs-review items must appear in both the stdout report and the JSON report so 
 
 ## Acceptance Criteria
 
-- [ ] Apply policy implements the auto-apply and report-only rules above; the old allowlist-only rule is removed.
-- [ ] Filling an empty phone/email/social field applies.
-- [ ] Social replacement applies only for the same-network domain (including dead-link replacement); cross-network values are report-only.
-- [ ] Website applies only on a `website_moved` flag with proposed host == snapshot home `final_url` host and not on the deny list (suffix match); the batiquitos multiscreensite.com case is rejected.
-- [ ] name/description/location apply only with a HIGH-severity `website_moved` flag in the run.
-- [ ] Changing an existing non-empty email/phone is report-only (Samantha@theABF.org, bradford@bsd.education, lschmelz@csusm.edu, anza_borrego phone cases).
-- [ ] The lossy name cases (Discover U, EAA Chapter 14, Coronado Public Library) are report-only absent rebrand evidence.
-- [ ] CMOD fixture still applies name, website, facebook, description; its phone change is report-only (acceptable).
-- [ ] Logo changes are report-only.
-- [ ] Needs-review items appear in stdout and JSON reports (partner, field, current, proposed, reason).
-- [ ] Cap remains 20; confidence >= 0.8, never-blank, protected fields, shape checks, validator gate unchanged.
-- [ ] DESIGN.md documents the new policy and why (the 2026-10-09 dry-run evidence).
+- [x] Apply policy implements the auto-apply and report-only rules above; the old allowlist-only rule is removed.
+- [x] Filling an empty phone/email/social field applies.
+- [x] Social replacement applies only for the same-network domain (including dead-link replacement); cross-network values are report-only.
+- [x] Website applies only on a `website_moved` flag with proposed host == snapshot home `final_url` host and not on the deny list (suffix match); the batiquitos multiscreensite.com case is rejected.
+- [x] name/description/location apply only with a HIGH-severity `website_moved` flag in the run.
+- [x] Changing an existing non-empty email/phone is report-only (Samantha@theABF.org, bradford@bsd.education, lschmelz@csusm.edu, anza_borrego phone cases).
+- [x] The lossy name cases (Discover U, EAA Chapter 14, Coronado Public Library) are report-only absent rebrand evidence.
+- [x] CMOD fixture still applies name, website, facebook, description; its phone change is report-only (acceptable).
+- [x] Logo changes are report-only.
+- [x] Needs-review items appear in stdout and JSON reports (partner, field, current, proposed, reason).
+- [x] Cap remains 20; confidence >= 0.8, never-blank, protected fields, shape checks, validator gate unchanged.
+- [x] DESIGN.md documents the new policy and why (the 2026-10-09 dry-run evidence).
 
 ## Implementation Plan
 

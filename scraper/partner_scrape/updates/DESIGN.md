@@ -60,18 +60,45 @@ each page text)>.json` in the scrape-cache store. Unchanged record + pages =
 zero API calls. Bump `PROMPT_VERSION` when prompt/schema semantics change.
 `FakeProposer` (canned proposals, call log) is the test double.
 
-## policy.py (043-005) -- apply policy (sole gate to PartnerWriter)
+## policy.py (043-005, reworked 043-010) -- apply policy (sole gate to PartnerWriter)
 
-`apply_policy(record, proposal, min_confidence=0.8) -> PolicyResult{applied,
-applied_fields, rejected}` is pure. Allowlist: name, website, phone, email,
-location, twitter, facebook, instagram, linkedin, description. `logo_src` is
-report-only; id, slug, latitude, longitude, organization_type never change.
-Per field: confidence >= threshold; empty value rejected (so a social link is
-never removed, report-only; a dead link can only be replaced by a link on the
-same network's domain); URL/email/phone shape check; then
-`validate_records([candidate])` must pass, else that field is rejected.
-`applied` is the full new record, or None when nothing applies. Ticket 006's
-job calls `put_record(actor="haiku")` only with `result.applied`.
+`apply_policy(record, proposal, flags=, snapshot=, min_confidence=0.8) ->
+PolicyResult{applied, applied_fields, rejected, needs_review}` is pure.
+`applied` is the full new record, or None when nothing applies; ticket 006's
+job calls `put_record(actor="haiku")` only with it.
+
+**Hard gates** (failure => `rejected`): confidence >= 0.8; never blank (a
+social link is never removed); id/slug/latitude/longitude/organization_type
+never change; URL/email/phone shape; `validate_records([candidate])`.
+
+**Auto-apply** (field-aware, after the gates):
+- fill an EMPTY phone / email / social field;
+- replace a social link with one on the same network's domain (covers dead-link
+  replacement);
+- website: only with a `website_moved` flag, proposed host == the snapshot's
+  home `final_url` host (www ignored), and host not in `STAGING_HOSTS`
+  (suffix match: multiscreensite.com, wixsite.com, squarespace.com,
+  godaddysites.com, weebly.com, webflow.io, wordpress.com, netlify.app,
+  vercel.app, github.io);
+- name, description, location: only with a HIGH-severity `website_moved` flag
+  (rebrand evidence) in this run.
+
+**Needs review** (`needs_review`: `{field, current, proposed, reason}`, never
+applied): changing an existing non-empty email/phone; name/description/location
+without rebrand evidence; a website not backed by the redirect or on a staging
+host; a cross-network social value; `logo_src`; any other field.
+
+Why: the first real `updates --dry-run` (2026-10-09, 211 partners) found 106
+partners with approvable changes, and the old allowlist-only rule would have
+replaced curated contacts with generic ones (Samantha@theABF.org ->
+info@theabf.org, bradford@bsd.education -> info@bsd.education, lschmelz@csusm.edu
+-> cstem@csusm.edu, anza_borrego phone), made lossy renames ("Discover U at San
+Diego Public Library" -> "San Diego Public Library", "EAA Chapter 14" ->
+"Chapter 14", "Coronado Public Library" -> "Coronado Library") and set a
+website to a site-builder staging host (batiquitos_lagoon_foundation ->
+*.multiscreensite.com). The roster's email/phone are often the curated partner
+contact, not the public address. CMOD proposals were all correct and still
+apply (name, website, facebook, description; its phone change is review-only).
 
 ## job.py (043-006) -- `partner-scrape updates`
 
@@ -90,9 +117,9 @@ slug, result.applied, actor="haiku")` (the single writer call; a test pins it)
 - A partner that raises (LLM or validation error) is reported as `ERROR`,
   keeps its old state hash, and does not stop the others; the CLI exits 1.
 - Report: stdout lines `FLAG`, `REDIRECT`, `PROPOSED old -> new`, `APPLIED` /
-  `WOULD APPLY`, `REJECTED field: reason`, `DEFERRED`, `ERROR`, and a counts
+  `WOULD APPLY`, `REJECTED field: reason`, `NEEDS REVIEW slug field: current -> proposed: reason`, `DEFERRED`, `ERROR`, and a counts
   line (run-job uploads stdout to `logs/updates/`). Machine-readable JSON per
   run at `updates/<UTC ts>.json` in the private history store: old record,
-  flags, proposal, applied diff, rejections (also written on dry runs).
+  flags, proposal, applied diff, rejections, `needs_review` (per partner and as a top-level list; also written on dry runs).
 - Partners with a notable redirect are re-examined every run (a `checks.py`
   rule); run-job/crontab wiring is ticket 008.
