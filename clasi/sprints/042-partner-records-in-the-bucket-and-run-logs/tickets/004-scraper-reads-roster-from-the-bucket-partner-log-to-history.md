@@ -1,10 +1,12 @@
 ---
 id: '004'
 title: Scraper reads roster from the bucket; partner_log to history
-status: open
-use-cases: [SUC-002]
-depends-on: ["003"]
-github-issue: "77-per-partner-records-in-the-bucket-as-the-source-of-truth.md"
+status: done
+use-cases:
+- SUC-002
+depends-on:
+- '003'
+github-issue: 77-per-partner-records-in-the-bucket-as-the-source-of-truth.md
 issue: 77-per-partner-records-in-the-bucket-as-the-source-of-truth.md
 completes_issue: false
 ---
@@ -18,12 +20,12 @@ Switch every scraper reader of `$SITE_DIR/src/data/partners.json` to the bucket 
 
 ## Acceptance Criteria
 
-- [ ] No code path reads src/data/partners.json (grep clean except historical comments/migrate tool input)
-- [ ] --site-dir still controls site-side outputs but no longer the roster; local-dev can point the data store at a local dir
-- [ ] scrape ends by writing consolidated data/partners.json
-- [ ] partner_log reads/writes history/partner_log
-- [ ] Dockerfile no longer copies the roster; README updated
-- [ ] Existing pytest suite updated and green
+- [x] No code path reads src/data/partners.json (grep clean except historical comments/migrate tool input)
+- [x] --site-dir still controls site-side outputs but no longer the roster; local-dev can point the data store at a local dir
+- [x] scrape ends by writing consolidated data/partners.json
+- [x] partner_log reads/writes history/partner_log
+- [x] Dockerfile no longer copies the roster; README updated
+- [x] Existing pytest suite updated and green
 
 ## Implementation Plan
 

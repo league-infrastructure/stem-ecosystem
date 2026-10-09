@@ -35,6 +35,7 @@ from pathlib import Path
 
 import pytest
 
+from tests.roster_seed import seed_roster
 from partner_scrape.directory.pipeline import run_directory
 from partner_scrape.directory.sources.base import run_offering_source
 from partner_scrape.directory.sources.offering_static_roster import (
@@ -217,10 +218,9 @@ class TestRelatedPartnerIdJoinIntegrity:
         assert ids, "expected at least one related_partner_id in the real roster"
 
         site_dir = tmp_path / "fixture-site"
-        data_dir = site_dir / "src" / "data"
-        data_dir.mkdir(parents=True)
+        site_dir.mkdir(parents=True, exist_ok=True)
         partners = [{"id": pid, "name": f"Fixture Partner {pid}"} for pid in ids]
-        (data_dir / "partners.json").write_text(json.dumps(partners), encoding="utf-8")
+        seed_roster(partners)
 
         # dry_run=True: computes the would-be-written payload without
         # touching disk -- no get_data_store() pinning needed, since

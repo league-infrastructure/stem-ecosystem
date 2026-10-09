@@ -25,6 +25,7 @@ from pathlib import Path
 
 import pytest
 
+from tests.roster_seed import seed_roster, seed_roster_file
 from partner_scrape.export import ads, writer
 from partner_scrape.fetch.fetcher import FetchResponse
 from partner_scrape.pipeline import run
@@ -127,9 +128,9 @@ def _fixture_fetcher() -> FixtureFetcher:
 
 def _site_dir(tmp_path: Path) -> Path:
     site_dir = tmp_path / "stem-ecosystem"
-    data_dir = site_dir / "src" / "data"
-    data_dir.mkdir(parents=True)
-    shutil.copy(PARTNERS_FIXTURE, data_dir / "partners.json")
+    site_dir.mkdir(parents=True)
+    # The roster lives in the data store now (sprint 042), not site_dir.
+    seed_roster_file(PARTNERS_FIXTURE)
     return site_dir
 
 

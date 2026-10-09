@@ -42,6 +42,7 @@ from pathlib import Path
 
 import pytest
 
+from tests.roster_seed import seed_roster, seed_roster_file
 from partner_scrape.enrich.cache import EnrichmentCache
 from partner_scrape.enrich.enricher import LLMEnricher
 from partner_scrape.enrich.llm_client import EnrichmentResult, FixtureLLMClient
@@ -126,9 +127,8 @@ def _site_dir(tmp_path: Path) -> Path:
     """A tmp_path-backed stand-in for the sibling stem-ecosystem repo --
     never a real stem-ecosystem checkout."""
     site_dir = tmp_path / "stem-ecosystem"
-    data_dir = site_dir / "src" / "data"
-    data_dir.mkdir(parents=True)
-    (data_dir / "partners.json").write_text(PARTNERS_FIXTURE.read_text())
+    site_dir.mkdir(parents=True)
+    seed_roster_file(PARTNERS_FIXTURE)
     return site_dir
 
 

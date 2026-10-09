@@ -9,15 +9,16 @@ Playwright Python base image) for `fetch_strategy = "headless"` sources.
 
 ## Build
 
-From the **repo root** (the build copies `src/data/partners.json` as well as
-`scraper/`):
+From the **repo root** (only `scraper/` is copied into the image):
 
 ```bash
 docker build -f scraper/docker/Dockerfile -t partner-scrape .
 ```
 
-The partner roster (`src/data/partners.json`) is **baked in at build time**:
-rebuild and redeploy after the roster changes. When bumping `playwright` in
+The partner roster is **not** baked into the image: each run reads the
+per-partner records (`data/partners/<slug>/partner.json`) from the bucket, so
+roster edits (`partner-scrape partners put|add`) take effect on the next run
+without a rebuild. When bumping `playwright` in
 `scraper/uv.lock`, bump the base image tag in the Dockerfile to match.
 
 ## Secrets

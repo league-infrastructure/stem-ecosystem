@@ -5,8 +5,8 @@
 # arguments are passed to partner-scrape for a one-shot run. See README.md
 # in this directory.
 #
-# Build from the repo root (the build needs src/data/partners.json as well
-# as scraper/):
+# Build from the repo root (the build context is scraper/ only; the partner
+# roster is NOT baked in -- it is read from the bucket at run time):
 #
 #   docker build -f scraper/docker/Dockerfile -t partner-scrape .
 #
@@ -64,14 +64,13 @@ COPY scraper/partner_scrape ./partner_scrape
 COPY scraper/docs/data-schema.md ./docs/data-schema.md
 RUN uv sync --locked --no-dev --extra headless --no-editable
 
-# The curated partner roster is read from $SITE_DIR/src/data/partners.json.
-# Nothing is written to SITE_DIR; all output goes to the data bucket.
-COPY src/data/partners.json /site/src/data/partners.json
+# The curated partner roster is NOT part of the image: it is read at run time
+# from the per-partner records in the data bucket (data/partners/<slug>/
+# partner.json). All output goes to the bucket.
 
 # Non-secret defaults; override with -e or --env-file. The cache and data
 # locations default to the bucket in partner_scrape/config.py.
-ENV SITE_DIR=/site \
-    DO_SPACES_ENDPOINT=https://sfo3.digitaloceanspaces.com \
+ENV DO_SPACES_ENDPOINT=https://sfo3.digitaloceanspaces.com \
     TZ=America/Los_Angeles \
     PYTHONUNBUFFERED=1
 

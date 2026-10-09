@@ -20,6 +20,7 @@ from pathlib import Path
 
 import pytest
 
+from tests.roster_seed import seed_roster
 from partner_scrape import cli
 from partner_scrape.directory import export as directory_export
 from partner_scrape.directory.pipeline import DEFAULT_GEO_DATA_DIR
@@ -103,10 +104,9 @@ def _write_real_partners_fixture(site_dir: Path) -> None:
     ids = {int(m) for m in re.findall(r"related_partner_id\s*=\s*(\d+)", places_text)}
     ids |= {int(m) for m in re.findall(r"related_partner_id\s*=\s*(\d+)", offerings_text)}
     ids = sorted(ids)
-    data_dir = site_dir / "src" / "data"
-    data_dir.mkdir(parents=True, exist_ok=True)
+    site_dir.mkdir(parents=True, exist_ok=True)
     partners = [{"id": pid, "name": f"Fixture Partner {pid}"} for pid in ids]
-    (data_dir / "partners.json").write_text(json.dumps(partners), encoding="utf-8")
+    seed_roster(partners)
 
 
 class TestArgumentWiring:
@@ -296,15 +296,14 @@ class TestDirectoryEndToEnd:
         # the test's own setup, not something the dry run itself
         # writes.
         site_dir = tmp_path / "site"
-        _write_real_partners_fixture(site_dir)
 
         # Sprint 025 ticket 005: own_data_dir is export_directory()'s
-        # only write target now -- "no disk write" is proven there, not
-        # under site_dir (which export_directory() no longer touches at
-        # all, dry-run or not; site_dir here only still feeds
-        # run_directory()'s own related_partner_id/partners.json read).
+        # only write target now -- "no disk write" is proven there.
+        # Since sprint 042 it also holds the roster (partner records),
+        # so seed it here and assert nothing *else* is written.
         own_data_dir = tmp_path / "own-data"
         monkeypatch.setenv("PARTNER_SCRAPE_DATA_DIR", str(own_data_dir))
+        _write_real_partners_fixture(site_dir)
 
         exit_code = cli.main(
             ["directory", "--dry-run", "-v", "--site-dir", str(site_dir)]
@@ -314,22 +313,21 @@ class TestDirectoryEndToEnd:
         out = capsys.readouterr().out
         assert "19" in out
         assert "dry run" in out.lower()
-        assert not own_data_dir.exists()
+        assert sorted(p.name for p in own_data_dir.iterdir()) == ["partners"]
 
     def test_real_run_writes_places_json(self, monkeypatch, tmp_path):
         monkeypatch.setattr(cli, "PoliteFetcher", lambda: _NeverCalledFetcher())
 
         site_dir = _make_site(tmp_path / "site")
-        _write_real_partners_fixture(site_dir)
 
         # Sprint 025 ticket 005: own_data_dir is the sole write target
         # now -- pin it directly here (overriding the module-level
         # _cache_dir fixture's own pin) so this test can read the
-        # written places.json back. site_dir is still passed through
-        # (and still needed) for run_directory()'s own
-        # related_partner_id/partners.json read.
+        # written places.json back. It also holds the roster (partner
+        # records) that run_directory()'s related_partner_id check reads.
         own_data_dir = tmp_path / "own-data"
         monkeypatch.setenv("PARTNER_SCRAPE_DATA_DIR", str(own_data_dir))
+        _write_real_partners_fixture(site_dir)
 
         exit_code = cli.main(["directory", "--site-dir", str(site_dir)])
 

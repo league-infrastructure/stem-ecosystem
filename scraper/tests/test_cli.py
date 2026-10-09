@@ -114,6 +114,12 @@ def _cache_dir(tmp_path, tmp_path_factory, monkeypatch):
         "project",
         lambda **kwargs: {"partner_count": 0, "current_event_count": 0, "past_event_count": 0},
     )
+    # Likewise the roster consolidation that follows project() (sprint 042);
+    # TestConsolidateWiring below replaces this stub to test the wiring.
+    monkeypatch.setattr(
+        "partner_scrape.partners.consolidate.consolidate",
+        lambda store, generated_at=None: {"partner_count": 0},
+    )
     return tmp_path
 
 
@@ -532,6 +538,46 @@ class TestYieldHistoryOwnDataDirDefault:
         assert second_source.delta == -1
 
 
+class TestConsolidateWiring:
+    """Sprint 042 ticket 004: the run ends by consolidating the partner
+    records into data/partners.json (after publish.project)."""
+
+    def test_consolidate_runs_after_project_on_the_data_store(self, monkeypatch, tmp_path):
+        calls = []
+        monkeypatch.setattr(cli, "run", lambda **kwargs: [])
+        monkeypatch.setattr(
+            cli.publish, "project", lambda **kw: calls.append("project") or {}
+        )
+        monkeypatch.setattr(
+            "partner_scrape.partners.consolidate.consolidate",
+            lambda store, generated_at=None: calls.append(("consolidate", store)) or {},
+        )
+
+        assert cli.main(["--no-enrich", "--no-report"]) == 0
+
+        assert calls[0] == "project"
+        assert calls[1][0] == "consolidate"
+        assert calls[1][1].root == Path(os.environ["PARTNER_SCRAPE_DATA_DIR"])
+
+    def test_consolidate_skipped_under_dry_run(self, monkeypatch):
+        def _boom(*a, **k):
+            raise AssertionError("consolidate must not run under --dry-run")
+
+        monkeypatch.setattr(cli, "run", lambda **kwargs: [])
+        monkeypatch.setattr("partner_scrape.partners.consolidate.consolidate", _boom)
+
+        assert cli.main(["--no-enrich", "--no-report", "--dry-run"]) == 0
+
+    def test_consolidate_failure_is_logged_and_exit_code_is_one(self, monkeypatch):
+        def _fail(*a, **k):
+            raise RuntimeError("bad record")
+
+        monkeypatch.setattr(cli, "run", lambda **kwargs: [])
+        monkeypatch.setattr("partner_scrape.partners.consolidate.consolidate", _fail)
+
+        assert cli.main(["--no-enrich", "--no-report"]) == 1
+
+
 class TestPublishWiring:
     """Ticket 004 (sprint 009): `publish.project(...)` is called after
     `run()` returns, skipped under `--dry-run`. `cli.run` is
@@ -555,7 +601,8 @@ class TestPublishWiring:
 
         assert exit_code == 0
         assert captured["site_dir"] == site_dir
-        assert captured["partners_path"] == site_dir / "src" / "data" / "partners.json"
+        # The roster is no longer located via site_dir (sprint 042).
+        assert "partners_path" not in captured
 
     def test_publish_project_defaults_site_dir_via_config_when_flag_omitted(
         self, monkeypatch, tmp_path
@@ -573,7 +620,8 @@ class TestPublishWiring:
         exit_code = cli.main(["--no-enrich", "--no-report"])
 
         assert exit_code == 0
-        assert captured["site_dir"] == tmp_path
+        # --site-dir no longer resolves anything for publish (sprint 042).
+        assert captured["site_dir"] is None
 
     def test_publish_project_is_skipped_under_dry_run(self, monkeypatch, tmp_path):
         def _boom(**kwargs):
