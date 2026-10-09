@@ -123,6 +123,8 @@ const listings = [
 
 <style is:global>
   /* Global: chat/hints nodes are created at runtime and carry no Astro scope attribute. */
+  /* Author display rules (.btn, .update-panels grid, ...) otherwise beat the UA [hidden] rule. */
+  .update-page [hidden] { display: none !important; }
   .update-page { padding-top: 24px; padding-bottom: 48px; }
   .update-explainer { max-width: 760px; margin-bottom: 28px; }
   .update-noscript { padding: 12px 14px; border: 1px solid var(--pink); border-radius: var(--radius); background: var(--white); }
