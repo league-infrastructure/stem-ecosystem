@@ -40,3 +40,35 @@ then requires token Jaccard >= 0.8.
 exception, 404 or 410; 403/429/999 bot walls are not dead). Only run for a
 record link that does not match the site's. Snapshots hold no page bodies;
 ticket 005 reads bodies from the fetch cache.
+
+
+## proposer.py (043-005) -- Haiku proposer
+
+`propose_for_partner(record, flags, snapshot, cache_store, proposer) ->
+(Proposal, from_cache)`. Input to the model: current record + flags + trimmed
+(6000 chars each) visible text of the home/About/Contact pages, read from the
+fetch cache by the snapshot's page URLs (`load_page_texts`). Model
+`claude-haiku-4-5-20251001`; `anthropic.Anthropic()` with no api_key;
+JSON-schema `output_config`. Output: a list of `{field, value, confidence
+0-1, reason}`; `description` is just another field. The prompt forbids empty
+values/removals and copying page text (mission phrase quotes only if < 15
+words). A similarity check (`drop_copied_description`) drops a description
+sharing a verbatim run of >= 15 words with the page text and records a note.
+
+**Cache key**: `updates/<slug>/<sha256(prompt_version, model, record, sha256 of
+each page text)>.json` in the scrape-cache store. Unchanged record + pages =
+zero API calls. Bump `PROMPT_VERSION` when prompt/schema semantics change.
+`FakeProposer` (canned proposals, call log) is the test double.
+
+## policy.py (043-005) -- apply policy (sole gate to PartnerWriter)
+
+`apply_policy(record, proposal, min_confidence=0.8) -> PolicyResult{applied,
+applied_fields, rejected}` is pure. Allowlist: name, website, phone, email,
+location, twitter, facebook, instagram, linkedin, description. `logo_src` is
+report-only; id, slug, latitude, longitude, organization_type never change.
+Per field: confidence >= threshold; empty value rejected (so a social link is
+never removed, report-only; a dead link can only be replaced by a link on the
+same network's domain); URL/email/phone shape check; then
+`validate_records([candidate])` must pass, else that field is rejected.
+`applied` is the full new record, or None when nothing applies. Ticket 006's
+job calls `put_record(actor="haiku")` only with `result.applied`.
