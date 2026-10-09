@@ -18,7 +18,7 @@ from typing import Any
 
 from partner_scrape.registry.validate_roster import (
     RosterValidationError,
-    validate_roster,
+    validate_records,
 )
 from partner_scrape.storage import Store
 
@@ -43,6 +43,19 @@ def check_ext(ext: str) -> str:
     if not _EXT_RE.match(clean):
         raise ValueError(f"invalid logo extension {ext!r}")
     return clean
+
+
+def read_record_file_safe(path) -> dict[str, Any]:
+    """Load a JSON object from a local file; ValueError if it is not one."""
+    import json
+
+    try:
+        obj = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"{path}: invalid JSON ({exc})") from exc
+    if not isinstance(obj, dict):
+        raise ValueError(f"{path}: record must be a JSON object")
+    return obj
 
 
 def record_key(slug: str) -> str:
@@ -126,5 +139,5 @@ def load_roster(store: Store, validate: bool = True) -> Roster:
         )
     roster = Roster(records)
     if validate:
-        validate_roster(roster.as_list())
+        validate_records(roster.as_list())
     return roster

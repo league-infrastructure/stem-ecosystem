@@ -176,3 +176,93 @@ def test_history_store_is_private_s3(monkeypatch):
     store = config.get_history_store()
     assert isinstance(store, S3Store)
     assert store.public_read is False and store.prefix == "history"
+
+
+# -- consolidation and CLI (ticket 042-003) ---------------------------------
+
+from partner_scrape import cli  # noqa: E402
+from partner_scrape.partners.consolidate import consolidate  # noqa: E402
+
+
+def test_consolidate_envelope_shape(w):
+    w.put_record("b_co", rec("b_co", id=2, name="B Co"), "t")
+    w.put_record("acme", rec("acme", id=1, city="SD"), "t")
+    env = consolidate(w.data, generated_at="2026-10-08T00:00:00Z")
+    assert list(env) == ["generated_at", "partner_count", "partners"]
+    assert env["partner_count"] == 2
+    assert [p["slug"] for p in env["partners"]] == ["acme", "b_co"]
+    first = env["partners"][0]
+    assert list(first) == ["id", "name", "city", "slug", "events_url", "past_events_url"]
+    assert first["events_url"] == "partners/acme/events.json"
+    assert first["past_events_url"] == "partners/acme/past-events.json"
+    assert json.loads(w.data.read_text("partners.json")) == env
+
+
+def test_consolidate_matches_publish_entry():
+    from partner_scrape.partners.consolidate import published_entry
+
+    e = published_entry({"id": 1, "name": "X"}, "x")
+    assert list(e) == ["id", "name", "slug", "events_url", "past_events_url"]
+
+
+def test_consolidate_bad_record_names_slug_and_keeps_old_file(w):
+    w.put_record("acme", rec("acme"), "t")
+    w.put_record("bad", rec("bad", id=2, name="Bad", latitude=999, longitude=0), "t")
+    w.data.write_text("partners.json", "OLD")
+    with pytest.raises(RosterValidationError, match="bad"):
+        consolidate(w.data)
+    assert w.data.read_text("partners.json") == "OLD"
+
+
+@pytest.fixture
+def cli_env(tmp_path, monkeypatch):
+    data, hist = LocalStore(tmp_path / "data"), LocalStore(tmp_path / "history")
+    monkeypatch.setattr(config, "get_data_store", lambda: data)
+    monkeypatch.setattr(config, "get_history_store", lambda: hist)
+    monkeypatch.setenv("USER", "tester")
+    return data, hist, tmp_path
+
+
+def test_cli_add_get_put_consolidate(cli_env, capsys):
+    data, hist, tmp = cli_env
+    assert cli.main(["partners", "add", "--name", "Acme Robotics"]) == 0
+    assert cli.main(["partners", "add", "--name", "Beta Labs", "--by", "haiku"]) == 0
+    a = read_record(data, "acme_robotics")
+    assert a["id"] == 1 and a["slug"] == "acme_robotics"
+    assert read_record(data, "beta_labs")["id"] == 2
+    assert cli.main(["partners", "add", "--name", "Acme Robotics"]) == 1  # duplicate
+    log = [json.loads(x) for x in hist.read_text(CHANGES_KEY).splitlines()]
+    assert [e["actor"] for e in log] == ["person:tester", "haiku"]
+
+    capsys.readouterr()
+    assert cli.main(["partners", "get", "acme_robotics"]) == 0
+    assert json.loads(capsys.readouterr().out)["name"] == "Acme Robotics"
+    assert cli.main(["partners", "get", "nope"]) == 1
+
+    f = tmp / "r.json"
+    f.write_text(json.dumps({**a, "city": "San Diego"}))
+    assert cli.main(["partners", "put", "acme_robotics", str(f), "--by", "me"]) == 0
+    assert read_record(data, "acme_robotics")["city"] == "San Diego"
+
+    assert cli.main(["partners", "consolidate"]) == 0
+    assert json.loads(data.read_text("partners.json"))["partner_count"] == 2
+
+
+def test_cli_put_validates_before_writing(cli_env, capsys):
+    data, hist, tmp = cli_env
+    f = tmp / "r.json"
+    f.write_text(json.dumps({"id": 1, "name": "X", "latitude": 999, "longitude": 0}))
+    assert cli.main(["partners", "put", "x", str(f)]) == 1
+    assert read_record(data, "x") is None
+    f.write_text(json.dumps({"id": 1, "slug": "other", "name": "X"}))
+    assert cli.main(["partners", "put", "x", str(f)]) == 1
+    assert read_record(data, "x") is None
+
+
+def test_cli_consolidate_failure_exits_nonzero_naming_slug(cli_env, capsys):
+    data, hist, tmp = cli_env
+    data.write_json("partners/bad/partner.json", {"id": 1, "slug": "bad", "name": "B", "latitude": 999, "longitude": 0})
+    data.write_text("partners.json", "OLD")
+    assert cli.main(["partners", "consolidate"]) == 1
+    assert "bad" in capsys.readouterr().err
+    assert data.read_text("partners.json") == "OLD"

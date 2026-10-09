@@ -183,6 +183,7 @@ def _build_parser() -> argparse.ArgumentParser:
     _add_teams_subcommand(subparsers)
     _add_directory_subcommand(subparsers)
     _add_logs_subcommand(subparsers)
+    _add_partners_subcommand(subparsers)
 
     return parser
 
@@ -520,6 +521,108 @@ def _run_discover_candidates(args: argparse.Namespace) -> int:
     return 0
 
 
+def _default_actor() -> str:
+    import getpass
+    import os
+
+    return f"person:{os.environ.get('USER') or getpass.getuser()}"
+
+
+def _add_partners_subcommand(subparsers: argparse._SubParsersAction) -> None:
+    parser = subparsers.add_parser(
+        "partners", help="Partner records in the bucket (data/partners/<slug>/)."
+    )
+    sub = parser.add_subparsers(dest="partners_command", required=True)
+    get = sub.add_parser("get", help="Print a partner record as JSON.")
+    get.add_argument("slug")
+    put = sub.add_parser("put", help="Validate and write a partner record from a file.")
+    put.add_argument("slug")
+    put.add_argument("file", help="JSON file holding the record.")
+    add = sub.add_parser("add", help="Create a new partner (assigns slug and next id).")
+    add.add_argument("--name", required=True)
+    add.add_argument("--file", help="Optional JSON file with other record fields.")
+    sub.add_parser(
+        "consolidate", help="Validate all records and write data/partners.json."
+    )
+    for p in (put, add):
+        p.add_argument(
+            "--by", default=None, help="Actor recorded in history (default person:$USER)."
+        )
+
+
+def _run_partners(args: argparse.Namespace) -> int:
+    import json
+    import sys
+    from pathlib import Path
+
+    from partner_scrape import config
+    from partner_scrape.model import slugify
+    from partner_scrape.partners.consolidate import consolidate
+    from partner_scrape.partners.records import (
+        check_slug,
+        list_slugs,
+        read_record,
+        read_record_file_safe,
+    )
+    from partner_scrape.partners.writer import PartnerWriter
+    from partner_scrape.registry.validate_roster import (
+        RosterValidationError,
+        validate_records,
+    )
+
+    def fail(msg: str) -> int:
+        print(f"partner-scrape partners: {msg}", file=sys.stderr)
+        return 1
+
+    cmd = args.partners_command
+    data = config.get_data_store()
+    try:
+        if cmd == "get":
+            rec = read_record(data, args.slug)
+            if rec is None:
+                return fail(f"no record for slug {args.slug!r}")
+            print(json.dumps(rec, indent=1, ensure_ascii=False))
+            return 0
+
+        if cmd == "consolidate":
+            envelope = consolidate(data)
+            print(f"partner-scrape partners: wrote partners.json ({envelope['partner_count']} partners)")
+            return 0
+
+        writer = PartnerWriter(data, config.get_history_store())
+        actor = args.by or _default_actor()
+        if cmd == "put":
+            record = read_record_file_safe(Path(args.file))
+            record.setdefault("slug", args.slug)
+            check_slug(args.slug)
+            if record["slug"] != args.slug:
+                return fail(
+                    f"record slug {record['slug']!r} does not match {args.slug!r}"
+                )
+            slug = args.slug
+        else:  # add
+            record = read_record_file_safe(Path(args.file)) if args.file else {}
+            record["name"] = args.name
+            slug = check_slug(slugify(args.name))
+            existing = list_slugs(data)
+            if slug in existing:
+                return fail(f"slug {slug!r} already exists")
+            ids = [
+                (read_record(data, s) or {}).get("id") for s in existing
+            ]
+            record["id"] = max([i for i in ids if isinstance(i, int)] or [0]) + 1
+            record["slug"] = slug
+        validate_records([record])
+        entry = writer.put_record(slug, record, actor)
+        print(
+            f"partner-scrape partners: {cmd} {slug}: "
+            + ("unchanged" if entry is None else "written")
+        )
+        return 0
+    except (RosterValidationError, ValueError, OSError) as exc:
+        return fail(str(exc))
+
+
 def main(argv: list[str] | None = None) -> int:
     """CLI entry point. Returns the process exit code."""
     parser = _build_parser()
@@ -536,6 +639,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "logs":
         return _run_logs(args)
+
+    if args.command == "partners":
+        return _run_partners(args)
 
     logging.basicConfig(
         level=logging.INFO if args.verbose else logging.WARNING,
