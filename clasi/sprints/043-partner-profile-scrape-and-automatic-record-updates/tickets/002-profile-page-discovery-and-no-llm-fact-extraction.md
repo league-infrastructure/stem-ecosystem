@@ -1,7 +1,7 @@
 ---
 id: '002'
 title: Profile page discovery and no-LLM fact extraction
-status: open
+status: done
 use-cases:
 - SUC-002
 depends-on: []
@@ -19,10 +19,10 @@ Pure functions: discover About/Contact pages from a home page's nav links and si
 
 ## Acceptance Criteria
 
-- [ ] `profiles/discover.py` returns candidate About/Contact URLs (same-site only) from anchors matching about, our story, who we are, mission, contact, visit, and from sitemap URLs; deterministic order, at most 1 About and 1 Contact chosen
-- [ ] `profiles/extract.py` extracts: `<title>`, `og:site_name`, JSON-LD Organization/LocalBusiness/Museum (name, address, telephone, email, sameAs, logo), footer/page social links by network (twitter/x, facebook, instagram, linkedin), `mailto:` and `tel:` links
-- [ ] Malformed HTML/JSON-LD never raises; returns what it found
-- [ ] Fixture-based unit tests including a CMOD-like page; no network, no LLM
+- [x] `profiles/discover.py` returns candidate About/Contact URLs (same-site only) from anchors matching about, our story, who we are, mission, contact, visit, and from sitemap URLs; deterministic order, at most 1 About and 1 Contact chosen
+- [x] `profiles/extract.py` extracts: `<title>`, `og:site_name`, JSON-LD Organization/LocalBusiness/Museum (name, address, telephone, email, sameAs, logo), footer/page social links by network (twitter/x, facebook, instagram, linkedin), `mailto:` and `tel:` links
+- [x] Malformed HTML/JSON-LD never raises; returns what it found
+- [x] Fixture-based unit tests including a CMOD-like page; no network, no LLM
 
 ## Implementation Plan
 
