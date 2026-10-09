@@ -1,6 +1,7 @@
 // DOM glue for /update chat mode. All server text is rendered with
 // textContent (no HTML parsing). Logic lives in src/lib/updates/*.
 import { createApiClient, describeError, DEFAULT_FALLBACK_EMAIL } from '../lib/updates/api-client.mjs';
+import { parseMessage } from '../lib/updates/richtext.mjs';
 import { formatHints, hintLine, hintsDiffer } from '../lib/updates/hints-view.mjs';
 
 export function initUpdateChat(page: HTMLElement, type: string, slug: string): void {
@@ -33,16 +34,16 @@ export function initUpdateChat(page: HTMLElement, type: string, slug: string): v
   label.htmlFor = 'chat-input';
   const input = document.createElement('textarea');
   input.id = 'chat-input';
-  input.rows = 3;
+  input.rows = 4;
   input.maxLength = 4000;
-  const sendBtn = el('button', 'chat-send', 'Send') as HTMLButtonElement;
+  const sendBtn = el('button', 'chat-send btn', 'Send') as HTMLButtonElement;
   sendBtn.type = 'submit';
   const hintEl = el('p', 'chat-hint', 'Enter to send, Shift+Enter for a new line.');
   const turns = el('p', 'chat-turns');
-  const restart = el('button', 'chat-restart', 'Start again') as HTMLButtonElement;
+  const restart = el('button', 'chat-restart btn btn-outline', 'Start again') as HTMLButtonElement;
   restart.type = 'button';
   restart.hidden = true;
-  const retry = el('button', 'chat-retry', 'Try again') as HTMLButtonElement;
+  const retry = el('button', 'chat-retry btn btn-outline', 'Try again') as HTMLButtonElement;
   retry.type = 'button';
   retry.hidden = true;
   form.append(label, input, sendBtn, hintEl);
@@ -71,11 +72,32 @@ export function initUpdateChat(page: HTMLElement, type: string, slug: string): v
   function addMessage(role: 'user' | 'assistant', text: string) {
     const m = el('div', `chat-msg chat-${role}`);
     const who = el('strong', 'chat-who', role === 'user' ? 'You' : 'Assistant');
-    const body = el('p', 'chat-text');
-    body.textContent = text; // preserved newlines via CSS white-space
+    const body = el('div', 'chat-text');
+    renderRich(body, text);
     m.append(who, body);
     transcript.append(m);
     m.scrollIntoView?.({ block: 'nearest' });
+  }
+
+  // Builds DOM nodes only (textContent / createTextNode); never parses HTML.
+  function renderRich(target: HTMLElement, text: string) {
+    for (const lines of parseMessage(text)) {
+      const p = el('p');
+      lines.forEach((segs: any[], i: number) => {
+        if (i) p.append(document.createElement('br'));
+        for (const s of segs) {
+          if (s.type === 'bold') p.append(el('strong', '', s.text));
+          else if (s.type === 'link') {
+            const a = el('a', '', s.text) as HTMLAnchorElement;
+            a.href = s.href;
+            a.target = '_blank';
+            a.rel = 'noopener nofollow';
+            p.append(a);
+          } else p.append(document.createTextNode(s.text));
+        }
+      });
+      target.append(p);
+    }
   }
 
   function renderTurns() {
@@ -114,7 +136,7 @@ export function initUpdateChat(page: HTMLElement, type: string, slug: string): v
     const changed = hintsDiffer(saved, proposed);
     if (changed) section('Proposed changes', proposed);
     if (changed && !ended) {
-      const b = el('button', 'hints-confirm', 'Confirm these hints') as HTMLButtonElement;
+      const b = el('button', 'hints-confirm btn btn-secondary', 'Confirm these hints') as HTMLButtonElement;
       b.type = 'button';
       b.disabled = busy;
       b.addEventListener('click', onConfirm);
