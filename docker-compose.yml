@@ -42,6 +42,48 @@ services:
         reservations:
           memory: 1G
 
+  updates:
+    # Partner update-agent sidecar (HTTP API behind Caddy). See
+    # scraper/docker/README.md, "Updates sidecar".
+    image: ghcr.io/league-infrastructure/stem-ecosystem-updates:${TAG:-latest}
+    build:
+      context: .
+      dockerfile: scraper/docker/Dockerfile.sidecar
+    environment:
+      SCRAPER_SECRETS_FILE: /run/secrets/stem-ecosystem_updates_secrets
+      UPDATES_ALLOWED_ORIGINS: ${UPDATES_ALLOWED_ORIGINS:-https://www.sdstemecosystem.org,https://sdstemecosystem.org,http://localhost:4322,http://localhost:4323}
+      UPDATES_FALLBACK_EMAIL: ${UPDATES_FALLBACK_EMAIL:-partners@sdstemecosystem.org}
+      UPDATES_DAILY_SPEND_USD: ${UPDATES_DAILY_SPEND_USD:-5}
+    secrets:
+      - stem-ecosystem_updates_secrets
+    networks:
+      - caddy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://127.0.0.1:8000/healthz', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    deploy:
+      replicas: 1
+      labels:
+        caddy: updates.jtlapp.net
+        caddy.reverse_proxy: "{{upstreams 8000}}"
+      restart_policy:
+        condition: any
+        delay: 10s
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 128M
+
+networks:
+  caddy:
+    external: true
+
 secrets:
   stem-ecosystem_scraper_secrets:
+    external: true
+  stem-ecosystem_updates_secrets:
     external: true

@@ -1,9 +1,12 @@
 ---
 id: '007'
 title: Sidecar Dockerfile, compose service and docs
-status: open
-use-cases: [SUC-007]
-depends-on: ["003", "004"]
+status: done
+use-cases:
+- SUC-007
+depends-on:
+- '003'
+- '004'
 github-issue: ''
 issue: 83-update-agent-sidecar-and-scraping-hints.md
 completes_issue: false
@@ -20,11 +23,11 @@ See architecture-update.md for the design and API contract.
 
 ## Acceptance Criteria
 
-- [ ] Compose: image `ghcr.io/league-infrastructure/stem-ecosystem-updates:${TAG:-latest}`, caddy external network, deploy labels `caddy: updates.jtlapp.net` and `caddy.reverse_proxy: "{{upstreams 8000}}"`, healthcheck, no ports, secret `stem-ecosystem_updates_secrets` declared external
-- [ ] `docker compose config` valid and `check-release` file checks pass
-- [ ] Image builds locally and /healthz responds
-- [ ] scraper/docker/README.md and scraper/README.md document env vars, secrets keys and ops
-- [ ] Tests pass (`uv run pytest` from scraper/)
+- [x] Compose: image `ghcr.io/league-infrastructure/stem-ecosystem-updates:${TAG:-latest}`, caddy external network, deploy labels `caddy: updates.jtlapp.net` and `caddy.reverse_proxy: "{{upstreams 8000}}"`, healthcheck, no ports, secret `stem-ecosystem_updates_secrets` declared external
+- [x] `docker compose config` valid and `check-release` file checks pass
+- [x] Image builds locally and /healthz responds
+- [x] scraper/docker/README.md and scraper/README.md document env vars, secrets keys and ops
+- [x] Tests pass (`uv run pytest` from scraper/)
 
 ## Implementation Plan
 

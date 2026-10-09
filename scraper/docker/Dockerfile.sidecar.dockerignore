@@ -1,0 +1,10 @@
+# Build context is the repo root, which holds node_modules/, dist/ and
+# the .env. Send only what Dockerfile.sidecar copies.
+*
+!scraper/pyproject.toml
+!scraper/uv.lock
+!scraper/partner_scrape/
+!scraper/docs/data-schema.md
+!scraper/docker/sidecar-entrypoint.sh
+!scraper/docker/load-secrets
+**/__pycache__
