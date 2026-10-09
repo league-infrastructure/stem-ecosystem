@@ -53,3 +53,17 @@ Otherwise the change goes to `needs_review` with a reason. Filling an EMPTY soci
 - **Existing tests to run**: `cd scraper && uv run pytest`
 - **New tests to write**: one test per case listed above (agua_hedionda, aquillius apply; challenge_island, brain_balance, aops, citizen_schools, encorps needs_review), dead-link (404, 410, exception) applies, empty-field fill applies, no-link-checker mode yields needs_review.
 - **Verification command**: `cd scraper && uv run pytest`
+
+## Follow-up fix
+
+Real dry run showed `fetcher_link_checker` returned dead on ANY exception, so
+robots-disallowed (Instagram/Facebook/LinkedIn) and bot-walled social links
+were reported "(record link is dead)" and bypassed this rule (e.g.
+challenge_island_san_diego_coastal, brain_balance_of_san_diego, encorps).
+Fixed in `scraper/partner_scrape/updates/checks.py`: dead only on an actual
+HTTP 404/410 from a non-social host; exceptions, `RobotsDisallowed`, timeouts,
+transport errors, 403/429/5xx are unknown (`None`); facebook/fb/instagram/
+twitter/x/linkedin hosts are never fetched and always unknown (logged-out
+fetches are unreliable even for 404). `None` never sets `Flag.dead` or yields
+`social_dead`. Dead-link replacement for social networks therefore goes to
+needs_review. Rationale in `updates/DESIGN.md`; tests added.
