@@ -28,7 +28,8 @@ different position in the pipeline than its own design describes. See
 ## Directory layout
 
 Partner directories are keyed by the *already-resolved* partner
-identity (`Opportunity.partner_name`, via `model.slugify`), never by
+identity (`Opportunity.partner_name` -> roster record -> its stored
+``slug``; ``model.slugify`` only when there is no roster match), never by
 raw scraper `source_id` -- an `Opportunity` can carry several
 contributing `source_id`s (`Opportunity.sources`, from cross-source
 dedup) but always resolves to exactly one partner via `normalize/`'s
@@ -163,6 +164,25 @@ def resolve_log_store(log_dir: str | Path | None) -> tuple[Store, str]:
     return get_history_store(), f"{_LOG_SUBDIR}/"
 
 
+def log_slug_for(
+    partner_name: str, partners_by_norm: dict[str, dict[str, Any]]
+) -> str:
+    """The history directory slug for `partner_name`.
+
+    The roster record's **stored** slug (resolved name -> record -> slug),
+    so renaming a partner (name changes, slug stays) keeps appending to the
+    same directory. A name with no roster match falls back to
+    ``slugify(name)``, as does a record without a slug (list-based tests).
+    At migration time stored slug == ``slugify(name)``, so history paths
+    written before sprint 042 are unchanged. `publish.project` uses the
+    same rule.
+    """
+    curated = find_partner(partner_name, partners_by_norm)
+    if curated is not None and curated.get("slug"):
+        return curated["slug"]
+    return slugify(partner_name)
+
+
 def _to_log_dict(opportunity: Opportunity, content_hash: str) -> dict[str, Any]:
     """Project every `Opportunity` field to a JSON-able dict, `sources`
     as a plain sorted list (not a `frozenset`, which `json.dumps` can't
@@ -200,8 +220,8 @@ def record(
     """Accumulate `opportunities` into their partner's append-only log.
 
     For each `Opportunity`, resolves a partner slug from its
-    already-resolved `partner_name` (`model.slugify`, reused from the
-    same primitive `normalize/run.py` uses for event slugs) and computes
+    already-resolved `partner_name` (`log_slug_for`: the roster record's
+    stored slug, so a rename keeps its history) and computes
     `published_content_hash(opportunity)`. A `(slug, content_hash)` pair
     already present in that partner's `opportunities.jsonl` is skipped
     (no write); anything else is appended as a new line. No existing
@@ -236,7 +256,7 @@ def record(
 
     by_slug: dict[str, list[Opportunity]] = defaultdict(list)
     for opportunity in opportunities:
-        by_slug[slugify(opportunity.partner_name)].append(opportunity)
+        by_slug[log_slug_for(opportunity.partner_name, partners_by_norm)].append(opportunity)
 
     for partner_slug, opps in by_slug.items():
         partner_prefix = f"{prefix}{partner_slug}/"

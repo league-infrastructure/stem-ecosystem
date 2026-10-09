@@ -69,3 +69,19 @@ prefix `partner_log/` (`history/partner_log` in the bucket); copying old
 objects is ticket 005. Published event files use the record's stored slug;
 the accumulated log is still keyed by `slugify(name)`.
 The image does not bake the roster. Local runs: README "Running locally".
+
+## Migration (ticket 042-005)
+
+`migrate.py` is the one-time import: `partner-scrape partners migrate
+[--site-dir ..] [--dry-run]` splits `src/data/partners.json` into records
+(slug = `slugify(name)`, stored), uploads logos to `partners/<slug>/logo.<ext>`
+(`logo_src` = that bucket-relative path, or `""`), through the archiving writer
+with actor `migration`, and **copies** `cache/partner_log/**` to
+`history/partner_log/**` (never moves/deletes; idempotent; a differing
+destination `opportunities.jsonl` gets only the missing source lines appended).
+Slug collisions, unusable names, a `logo_src` that is missing/not a bare
+filename, or a failing validation abort before any write.
+`partner-scrape partners verify-migration --baseline <file|->` consolidates in
+memory and exits 1 on any difference except `logo_src` values (partner order is
+a note only). The partner_log history directory is keyed by the record's stored
+slug (`partner_log.log_slug_for`), so a rename keeps its history.
