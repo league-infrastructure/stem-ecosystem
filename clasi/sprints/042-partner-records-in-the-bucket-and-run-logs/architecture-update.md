@@ -1,6 +1,6 @@
 ---
-sprint: "042"
-status: draft
+sprint: '042'
+status: done
 ---
 # Architecture Update -- Sprint 042: Partner records in the bucket, and run logs
 
