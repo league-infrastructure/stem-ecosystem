@@ -11,7 +11,14 @@
 // itself (partners.json events_url/past_events_url, image_src fields).
 // Everything is staged in a temp dir and validated before the site's
 // directories are touched, so a failed fetch leaves the previous data intact.
-// src/data/partners.json (hand-curated) is never written; SCHEMA.md is not copied.
+// The roster comes from the bucket too: src/data/partners.json is built from the
+// consolidated data/partners.json (a plain array, events urls dropped), and each
+// partner's data/<logo_src> (partners/<slug>/logo.<ext>) is downloaded to
+// public/images/logos/<slug>.<ext>, with logo_src rewritten to that bare filename
+// (what getLogoPath expects). The same rewrite is applied to logo_src in
+// opportunities.json and ads.json. Logos are only added, never deleted
+// (public/images/logos/default-partner.svg is the site's own fallback).
+// SCHEMA.md is not copied.
 
 import { promises as fs } from "node:fs";
 import os from "node:os";
@@ -96,6 +103,23 @@ function safeRel(rel, what) {
   return norm;
 }
 
+const LOGO_DIR = "public/images/logos";
+const BUCKET_LOGO_RE = /^partners\/[^/]+\/logo\.[A-Za-z0-9]+$/;
+
+/** Bucket logo path "partners/<slug>/logo.<ext>" -> site filename "<slug>.<ext>". */
+export function siteLogoName(bucketPath) {
+  const [, slug, file] = bucketPath.split("/");
+  return `${slug}.${file.split(".").pop().toLowerCase()}`;
+}
+
+function rewriteLogos(rows, known) {
+  for (const r of rows) {
+    if (r && typeof r.logo_src === "string" && known.has(r.logo_src)) {
+      r.logo_src = siteLogoName(r.logo_src);
+    }
+  }
+}
+
 /**
  * Fetch (or copy) the data into the site tree rooted at `root`.
  * `read(rel)` returns a Buffer for a path relative to the data/ prefix.
@@ -118,6 +142,42 @@ export async function fetchData({ root, read, log = () => {} }) {
       await write(stagePath("data", f), buf);
     });
     if (errs.length) fail(errs);
+
+    // 1b. Roster for the pages: curated fields only, logo_src as a bare filename.
+    const logoPaths = new Set();
+    for (const p of json[ENVELOPE].partners ?? []) {
+      if (!p.logo_src) continue;
+      if (!BUCKET_LOGO_RE.test(p.logo_src)) {
+        throw new FetchError(
+          `partner ${p.id ?? p.slug}: logo_src ${JSON.stringify(p.logo_src)} is not partners/<slug>/logo.<ext>`,
+        );
+      }
+      logoPaths.add(p.logo_src);
+    }
+    const roster = (json[ENVELOPE].partners ?? []).map((p) => {
+      const { events_url, past_events_url, ...rest } = p;
+      return { ...rest, logo_src: p.logo_src ? siteLogoName(p.logo_src) : "" };
+    });
+    const logoNames = new Map();
+    for (const lp of logoPaths) {
+      const name = siteLogoName(lp);
+      if (logoNames.has(name)) throw new FetchError(`two logos map to ${name}`);
+      logoNames.set(name, lp);
+    }
+    errs = await pool([...logoNames], async ([name, lp]) => {
+      const buf = await read(lp).catch((e) => {
+        throw new FetchError(`partner logo missing: ${lp} (${e.message})`);
+      });
+      await write(stagePath("logos", name), buf);
+    });
+    if (errs.length) fail(errs);
+    await write(stagePath("data", "roster.json"), JSON.stringify(roster, null, 2) + "\n");
+    for (const f of ["opportunities.json", "ads.json"]) {
+      if (Array.isArray(json[f])) {
+        rewriteLogos(json[f], logoPaths);
+        await write(stagePath("data", f), JSON.stringify(json[f], null, 1) + "\n");
+      }
+    }
 
     // 2. Per-partner event files named by the envelope.
     const partners = json[ENVELOPE].partners;
@@ -158,6 +218,11 @@ export async function fetchData({ root, read, log = () => {} }) {
     await fs.mkdir(pubData, { recursive: true });
     const cp = (from, to) => fs.cp(from, to, { recursive: true });
 
+    await cp(stagePath("data", "roster.json"), path.join(srcData, "partners.json"));
+    if (logoNames.size) {
+      await fs.mkdir(path.join(root, LOGO_DIR), { recursive: true });
+      await cp(stagePath("logos"), path.join(root, LOGO_DIR));
+    }
     for (const f of SRC_ONLY) await cp(stagePath("data", f), path.join(srcData, f));
     for (const f of BOTH) {
       await cp(stagePath("data", f), path.join(srcData, f));
@@ -178,6 +243,7 @@ export async function fetchData({ root, read, log = () => {} }) {
       partners: partners.length,
       eventFiles: eventRels.size,
       images: imageNames.size,
+      logos: logoNames.size,
     };
   } finally {
     await fs.rm(stage, { recursive: true, force: true });
@@ -189,6 +255,8 @@ export async function dataPresent(root) {
   const need = [
     "src/data/opportunities.json",
     "src/data/teams.json",
+    "src/data/partners.json",
+    "public/images/logos",
     "public/data/partners.json",
     "public/data/partners",
     "public/images/opportunities",
@@ -229,7 +297,7 @@ async function main(argv) {
   const s = await fetchData({ root, read });
   console.log(
     `fetched: ${s.opportunities} opportunities, ${s.partners} partners, ` +
-      `${s.eventFiles} event files, ${s.images} images, 0 missing`,
+      `${s.eventFiles} event files, ${s.images} images, ${s.logos} logos, 0 missing`,
   );
 }
 
