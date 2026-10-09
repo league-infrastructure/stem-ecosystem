@@ -185,6 +185,7 @@ def _build_parser() -> argparse.ArgumentParser:
     _add_directory_subcommand(subparsers)
     _add_logs_subcommand(subparsers)
     _add_partners_subcommand(subparsers)
+    _add_profiles_subcommand(subparsers)
 
     return parser
 
@@ -527,6 +528,37 @@ def _default_actor() -> str:
     return f"person:{os.environ.get('USER') or getpass.getuser()}"
 
 
+def _add_profiles_subcommand(subparsers: argparse._SubParsersAction) -> None:
+    parser = subparsers.add_parser(
+        "profiles",
+        help="Fetch each partner's home/About/Contact pages and write private "
+        "snapshots (history/profiles/<slug>/profile.json). No LLM.",
+    )
+    parser.add_argument("--slug", default=None, help="Only this partner.")
+    parser.add_argument("--limit", type=int, default=None, help="At most N partners.")
+
+
+def _run_profiles(args: argparse.Namespace) -> int:
+    from partner_scrape import config
+    from partner_scrape.fetch.redirects import RedirectLog
+    from partner_scrape.partners.records import load_roster
+    from partner_scrape.profiles.job import run_profiles
+
+    redirect_log = RedirectLog()
+    roster = load_roster(config.get_data_store(), validate=False)
+    report = run_profiles(
+        roster.as_list(),
+        PoliteFetcher(redirect_log=redirect_log),
+        config.get_history_store(),
+        slug=args.slug,
+        limit=args.limit,
+        redirect_log=redirect_log,
+    )
+    for line in report.lines():
+        print(line)
+    return 0
+
+
 def _add_partners_subcommand(subparsers: argparse._SubParsersAction) -> None:
     parser = subparsers.add_parser(
         "partners", help="Partner records in the bucket (data/partners/<slug>/)."
@@ -697,6 +729,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "partners":
         return _run_partners(args)
+
+    if args.command == "profiles":
+        return _run_profiles(args)
 
     logging.basicConfig(
         level=logging.INFO if args.verbose else logging.WARNING,

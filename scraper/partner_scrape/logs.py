@@ -29,8 +29,9 @@ from partner_scrape.storage import Store
 
 INDEX_KEY = "index.jsonl"
 
-#: Job -> log type directory. ``profiles``/``updates`` are reserved.
-LOG_TYPES = {"scrape": "scrape", "teams": "teams", "directory": "directory"}
+#: Job -> log type directory. ``updates`` is reserved.
+LOG_TYPES = {"scrape": "scrape", "teams": "teams", "directory": "directory",
+             "profiles": "profiles"}
 
 _SECRET_NAME = re.compile(r"KEY|SECRET|TOKEN|PASSWORD|BUNDLE|B64", re.I)
 _MIN_SECRET_LEN = 4
