@@ -9,6 +9,7 @@ runs in Starlette's threadpool.
 from __future__ import annotations
 
 import json
+import logging
 from datetime import datetime
 from importlib import metadata
 from typing import Any, Callable
@@ -22,12 +23,15 @@ from starlette.responses import JSONResponse
 from starlette.routing import Route
 
 from partner_scrape.hints import HintError, HintStore, HintWriter, actor_for
-from partner_scrape.sidecar.agent import Agent, EchoAgent
+from partner_scrape.sidecar.agent import Agent, ContextBuilder, EchoAgent, ToolUseAgent
 from partner_scrape.sidecar.config import SidecarConfig
+from partner_scrape.sidecar.llm import GuardClient, LLMUnavailable
 from partner_scrape.sidecar.resolver import ENTITY_TYPES, EntityResolver
 from partner_scrape.sidecar.sessions import Session, SessionStore, utcnow
 from partner_scrape.sidecar.transcripts import TranscriptWriter
 from partner_scrape.storage import Store
+
+log = logging.getLogger(__name__)
 
 EFFECTIVE = "next scheduled scrape"
 
@@ -88,6 +92,7 @@ class UpdateService:
         transcripts: TranscriptWriter,
         agent: Agent,
         sessions: SessionStore,
+        guard: GuardClient | None = None,
     ):
         self.config = config
         self.resolver = resolver
@@ -96,6 +101,7 @@ class UpdateService:
         self.transcripts = transcripts
         self.agent = agent
         self.sessions = sessions
+        self.guard = guard
 
     # -- helpers -----------------------------------------------------------
     def _session(self, session_id: str) -> Session:
@@ -126,6 +132,13 @@ class UpdateService:
                 f"correct information lives."
             ),
         }
+
+    def _upstream_error(self) -> ApiError:
+        return ApiError(
+            "upstream_unavailable",
+            "Our assistant is temporarily unavailable, so nothing was changed. "
+            f"Please try again in a few minutes or email {self.config.fallback_email}.",
+        )
 
     def _end_message(self, reason: str) -> str:
         if reason == "turn_cap":
@@ -179,8 +192,36 @@ class UpdateService:
             if s.status != "active":
                 raise ApiError("session_ended", self._end_message(s.ended_reason or "turn_cap"))
             ts = _stamp(self.sessions.clock())
+            verdict = None
+            if self.guard is not None:
+                try:
+                    verdict = self.guard.classify(s.entity.name, s.messages, text)
+                except LLMUnavailable as exc:
+                    log.warning("guard unavailable (session %s): %s", s.id, exc)
+                    raise self._upstream_error() from None  # fail closed
+                if verdict.usage:
+                    s.usage.append(verdict.usage.to_dict())
             s.messages.append({"role": "user", "text": text, "ts": ts})
-            turn = self.agent.respond(s, text)
+            if verdict is not None and not verdict.legitimate:
+                s.status, s.ended_reason = "ended", "guard"
+                s.guard_reason = f"{verdict.category}: {verdict.reason}"
+                log.info("guard ended session %s: %s", s.id, s.guard_reason)
+                reply = self._end_message("guard")
+                s.messages.append({"role": "assistant", "text": reply, "ts": ts})
+                self.transcripts.write(s)
+                return JSONResponse({
+                    "reply": reply, "proposed_hints": s.proposed_hints,
+                    "status": s.status, "ended_reason": s.ended_reason,
+                    "turns_left": max(self.config.max_turns - s.user_turns, 0),
+                    "notices": [],
+                })
+            try:
+                turn = self.agent.respond(s, text)
+            except LLMUnavailable as exc:
+                log.warning("agent unavailable (session %s): %s", s.id, exc)
+                s.messages.pop()  # the turn did not happen; let the user retry
+                raise self._upstream_error() from None
+            s.usage.extend(u.to_dict() for u in turn.usage)
             reply, notices = turn.reply, list(turn.notices)
             if turn.proposed_hints is not None:
                 s.proposed_hints = turn.proposed_hints
@@ -241,6 +282,7 @@ def create_app(
     history_store: Store,
     hints_store: Store,
     agent: Agent | None = None,
+    guard: GuardClient | None = None,
     clock: Callable[[], datetime] = utcnow,
     fetcher: Any = None,
 ) -> Starlette:
@@ -253,6 +295,7 @@ def create_app(
         transcripts=TranscriptWriter(history_store, config.ip_hash_salt),
         agent=agent or EchoAgent(),
         sessions=SessionStore(config.idle_minutes, clock),
+        guard=guard,
     )
 
     def error_response(err: ApiError) -> JSONResponse:
@@ -318,9 +361,23 @@ def create_app_from_env() -> Starlette:
 
     from partner_scrape import config as scraper_config
 
+    from partner_scrape.sidecar.llm import AnthropicAgentClient, build_guard
+
+    config = SidecarConfig.from_env(os.environ)
+    data_store = scraper_config.get_data_store()
+    history_store = scraper_config.get_history_store()
+    hints_store = scraper_config.get_hints_store()
+    agent = ToolUseAgent(
+        AnthropicAgentClient(),
+        ContextBuilder(data_store, history_store),
+        fallback_email=config.fallback_email,
+        saved_hints=HintStore(hints_store).hints,
+    )
     return create_app(
-        SidecarConfig.from_env(os.environ),
-        data_store=scraper_config.get_data_store(),
-        history_store=scraper_config.get_history_store(),
-        hints_store=scraper_config.get_hints_store(),
+        config,
+        data_store=data_store,
+        history_store=history_store,
+        hints_store=hints_store,
+        agent=agent,
+        guard=build_guard(config.guard_backend, os.environ, model=config.openrouter_guard_model),
     )

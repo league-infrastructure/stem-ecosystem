@@ -31,6 +31,10 @@ class Session:
     status: str = "active"  # active | ended
     ended_reason: str | None = None  # guard | turn_cap
     confirmed: bool = False
+    #: Guard category and reason when the guard ended the session (logged).
+    guard_reason: str | None = None
+    #: Token usage of every model call, for spend accounting.
+    usage: list[dict[str, Any]] = field(default_factory=list)
     lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
 
     @property
@@ -47,6 +51,8 @@ class Session:
             "status": self.status,
             "ended_reason": self.ended_reason,
             "confirmed": self.confirmed,
+            "guard_reason": self.guard_reason,
+            "usage": self.usage,
             "messages": self.messages,
             "proposed_hints": self.proposed_hints,
         }

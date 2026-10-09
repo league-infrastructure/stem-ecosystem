@@ -29,6 +29,10 @@ class SidecarConfig:
     max_turns: int = 12
     max_message_chars: int = 1000
     idle_minutes: int = 30
+    #: Guard backend: "anthropic" (default) or "openrouter" (optional, off).
+    guard_backend: str = "anthropic"
+    #: Model override for the OpenRouter guard (None = module default).
+    openrouter_guard_model: str | None = None
     #: Salt for IP hashing. Never logged or written anywhere. If the secrets
     #: bundle supplies none, a per-process random salt is used (hashes then
     #: differ across restarts, which is safe, just not correlatable).
@@ -49,5 +53,7 @@ class SidecarConfig:
             max_turns=_int(env, "UPDATES_MAX_TURNS", 12),
             max_message_chars=_int(env, "UPDATES_MAX_MESSAGE_CHARS", 1000),
             idle_minutes=_int(env, "UPDATES_IDLE_MINUTES", 30),
+            guard_backend=(env.get("UPDATES_GUARD_BACKEND") or "").strip().lower() or "anthropic",
+            openrouter_guard_model=(env.get("UPDATES_OPENROUTER_GUARD_MODEL") or "").strip() or None,
             ip_hash_salt=salt,
         )
