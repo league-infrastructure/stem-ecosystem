@@ -1,6 +1,12 @@
 ---
-status: pending
+status: in-progress
 related: clasi/issues/83-update-agent-sidecar-and-scraping-hints.md
+sprint: '045'
+tickets:
+- 045-001
+- 045-002
+- 045-003
+- 045-004
 ---
 
 # Update page and "request an update" links on the site

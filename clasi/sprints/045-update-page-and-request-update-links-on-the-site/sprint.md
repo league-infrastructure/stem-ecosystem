@@ -1,7 +1,7 @@
 ---
 id: '045'
 title: Update page and request-update links on the site
-status: planning-docs
+status: ticketing
 branch: sprint/045-update-page-and-request-update-links-on-the-site
 use-cases: [SUC-001, SUC-002, SUC-003, SUC-004, SUC-005]
 issues: ["84"]
@@ -57,7 +57,7 @@ Before tickets can be created, all of the following must be true:
 
 - [x] Sprint planning documents are complete (sprint.md, use cases, architecture)
 - [x] Architecture review passed
-- [ ] Stakeholder has approved the sprint plan (Eric approved 2026-10-09; team lead records gate)
+- [x] Stakeholder has approved the sprint plan (Eric approved 2026-10-09; team lead records gate)
 
 ## Tickets
 
