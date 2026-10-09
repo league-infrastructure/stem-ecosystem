@@ -47,6 +47,9 @@ class Flag:
     message: str
     record_value: str = ""
     observed_value: str = ""
+    #: Social flags only: the link checker reported the record's link dead
+    #: (404/410/exception). Lets the apply policy decide without new I/O.
+    dead: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         d = asdict(self)
@@ -310,11 +313,13 @@ def _check_socials(record, snapshot, link_checker) -> list[Flag]:
             suffix = " (record link is dead)" if dead else ""
             flags.append(Flag(
                 "social_changed", Severity.MEDIUM, net,
-                f"record {net} {rec} differs from site link {obs}{suffix}", rec, obs))
+                f"record {net} {rec} differs from site link {obs}{suffix}", rec, obs,
+                dead=dead))
         elif dead:
             flags.append(Flag(
                 "social_dead", Severity.MEDIUM, net,
-                f"record {net} link {rec} is dead and the site links none", rec, ""))
+                f"record {net} link {rec} is dead and the site links none", rec, "",
+                dead=True))
     return flags
 
 

@@ -154,19 +154,19 @@ def moved_flag(severity="high"):
 def test_applies_rebrand_fields_and_is_pure():
     before = json.dumps(CMOD_RECORD, sort_keys=True)
     r = run(fp("website", "https://visitcmod.org"),
-            fp("facebook", "https://facebook.com/childrensmuseumofdiscovery"),
+            fp("linkedin", "https://linkedin.com/company/childrensmuseumofdiscovery"),
             fp("description", "A hands-on museum."), fp("name", "Children's Museum of Discovery"))
-    assert r.applied_fields == ["website", "facebook", "description", "name"]
+    assert r.applied_fields == ["website", "linkedin", "description", "name"]
     assert r.applied["website"] == "https://visitcmod.org" and r.applied["slug"] == "cmod"
     assert r.rejected == [] and r.needs_review == []
     assert json.dumps(CMOD_RECORD, sort_keys=True) == before
 
 
 def test_confidence_threshold_configurable():
-    p = fp("facebook", "https://facebook.com/x", conf=0.79)
+    p = fp("linkedin", "https://linkedin.com/company/x", conf=0.79)
     assert run(p).applied is None and "confidence" in run(p).rejected[0][1]
-    assert run(p, min_confidence=0.7).applied_fields == ["facebook"]
-    assert run(fp("facebook", "https://facebook.com/x", conf=0.8)).applied_fields == ["facebook"]
+    assert run(p, min_confidence=0.7).applied_fields == ["linkedin"]
+    assert run(fp("linkedin", "https://linkedin.com/company/x", conf=0.8)).applied_fields == ["linkedin"]
 
 
 @pytest.mark.parametrize("name", ["slug", "id", "latitude", "longitude", "organization_type"])
@@ -267,16 +267,16 @@ def test_shape_checks():
 
 
 def test_partial_apply_and_unchanged_value_skipped():
-    r = run(fp("facebook", "https://facebook.com/x"), fp("email", "info@visitcmod.org", conf=0.5),
+    r = run(fp("linkedin", "https://linkedin.com/company/x"), fp("email", "info@visitcmod.org", conf=0.5),
             fp("name", CMOD_RECORD["name"]), fp("phone", "760-233-7755"))
-    assert r.applied_fields == ["facebook"]
+    assert r.applied_fields == ["linkedin"]
     assert [f for f, _ in r.rejected] == ["email"]
     assert review_fields(r) == ["phone"]
 
 
 def test_record_validator_gate():
     bad = dict(CMOD_RECORD, latitude=1.0, longitude=2.0)
-    r = run(fp("facebook", "https://facebook.com/x"), record=bad)
+    r = run(fp("linkedin", "https://linkedin.com/company/x"), record=bad)
     assert r.applied is None and "validation" in r.rejected[0][1]
 
 
@@ -293,6 +293,77 @@ def test_cmod_end_to_end_with_fake(cache):
     ]))
     prop, _ = propose_for_partner(CMOD_RECORD, flags(), snap, cache, fake)
     r = apply_policy(CMOD_RECORD, prop, flags=flags(), snapshot=snap)
-    assert r.applied_fields == ["website", "name", "facebook", "description"]
+    # facebook is live and on the right network -> needs_review (043-011)
+    assert r.applied_fields == ["website", "name", "description"]
     assert {f for f, _ in r.rejected} == {"twitter"}
-    assert review_fields(r) == ["phone", "logo_src"]
+    assert review_fields(r) == ["facebook", "phone", "logo_src"]
+
+
+# ------------------------------------------------- 043-011 social replacement
+
+def _social(net, cur, new, *, dead=None, site=None):
+    """Run policy for one social field; ``dead`` is the link checker's verdict
+    (True dead / False alive / None no checker)."""
+    rec = dict(CMOD_RECORD, **{net: cur})
+    checker = None if dead is None else (lambda url: not dead)
+    snap = cmod_snapshot()
+    fl = compare_partner(rec, snap, checker)
+    return apply_policy(rec, Proposal([fp(net, new)]), flags=fl, snapshot=snap)
+
+
+@pytest.mark.parametrize("net,cur,new", [
+    ("linkedin", "https://twitter.com/aguahedionda", "https://linkedin.com/company/agua"),
+    ("facebook", "https://instagram.com/aquillius", "https://facebook.com/aquillius"),
+])
+def test_wrong_network_current_value_still_applies(net, cur, new):
+    r = _social(net, cur, new, dead=False)
+    assert r.applied[net] == new and r.needs_review == []
+
+
+@pytest.mark.parametrize("net,cur,new", [
+    ("facebook", "https://facebook.com/ChallengeIslandSDCoastal", "https://facebook.com/ChallengeIslandHQ"),
+    ("facebook", "https://facebook.com/brainbalancesandiego", "https://facebook.com/brainbalancecenters"),
+    ("facebook", "https://facebook.com/aopscampus", "https://facebook.com/aops"),
+    ("linkedin", "https://linkedin.com/company/citizen-schools", "https://linkedin.com/company/12345"),
+    ("facebook", "https://facebook.com/encorps", "https://facebook.com/encorpsnational"),
+])
+def test_live_correct_network_link_is_needs_review(net, cur, new):
+    r = _social(net, cur, new, dead=False)
+    assert r.applied is None and review_fields(r) == [net]
+    assert "not reported dead" in r.needs_review[0]["reason"]
+
+
+@pytest.mark.parametrize("status", [404, 410, "exception"])
+def test_dead_current_link_allows_same_network_replacement(status):
+    cur, new = "https://facebook.com/old", "https://facebook.com/new"
+    rec = dict(CMOD_RECORD, facebook=cur)
+    snap = cmod_snapshot()
+
+    def checker(url):  # mirrors fetcher_link_checker's dead rules
+        if status == "exception":
+            return False
+        return status not in (404, 410)
+
+    fl = compare_partner(rec, snap, checker)
+    r = apply_policy(rec, Proposal([fp("facebook", new)]), flags=fl, snapshot=snap)
+    assert r.applied["facebook"] == new
+
+
+def test_empty_social_field_fill_still_applies():
+    r = _social("linkedin", "", "https://linkedin.com/company/x", dead=False)
+    assert r.applied["linkedin"] == "https://linkedin.com/company/x"
+
+
+def test_no_link_checker_means_needs_review():
+    r = _social("facebook", "https://facebook.com/old", "https://facebook.com/new", dead=None)
+    assert r.applied is None and review_fields(r) == ["facebook"]
+    r = apply_policy(dict(CMOD_RECORD, facebook="https://facebook.com/old"),
+                     Proposal([fp("facebook", "https://facebook.com/new")]), flags=[])
+    assert review_fields(r) == ["facebook"]
+
+
+def test_dead_flag_accepted_as_dict():
+    fl = [{"kind": "social_dead", "severity": "medium", "field": "facebook", "dead": True}]
+    r = apply_policy(dict(CMOD_RECORD, facebook="https://facebook.com/old"),
+                     Proposal([fp("facebook", "https://facebook.com/new")]), flags=fl)
+    assert r.applied["facebook"] == "https://facebook.com/new"
