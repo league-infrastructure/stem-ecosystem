@@ -1,6 +1,6 @@
 ---
 sprint: '043'
-status: draft
+status: done
 ---
 # Architecture Update -- Sprint 043: Partner profile scrape and automatic record updates
 
