@@ -1,14 +1,16 @@
 ---
 id: 009
 title: Production run and redeploy (team-lead run)
-status: open
+status: in-progress
 use-cases:
 - SUC-001
 - SUC-002
 - SUC-003
 - SUC-004
 - SUC-006
-depends-on: ['008']
+depends-on:
+- 008
+- '010'
 github-issue: ''
 issue:
 - 73-detect-and-record-redirects-on-every-fetch.md

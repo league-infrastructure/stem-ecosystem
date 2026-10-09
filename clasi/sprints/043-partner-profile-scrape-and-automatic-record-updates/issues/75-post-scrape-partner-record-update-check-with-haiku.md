@@ -7,6 +7,7 @@ tickets:
 - 043-006
 - 043-008
 - 043-009
+- 043-010
 ---
 
 # Post-scrape partner-record update check, with Haiku for changed partners
