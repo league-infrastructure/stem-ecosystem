@@ -11,6 +11,7 @@ use-cases:
 depends-on:
 - 008
 - '010'
+- '011'
 github-issue: ''
 issue:
 - 73-detect-and-record-redirects-on-every-fetch.md

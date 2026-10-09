@@ -102,6 +102,7 @@ Programmers never read the real `.env`. Ticket 009 is run by the team lead.
 | 007 | Event-quality checks in the updates report | 006 |
 | 008 | run-job, crontab, Dockerfile, and docs for the new jobs | 006, 007 |
 | 010 | Tighten the auto-apply policy after the first real dry run | 008 |
-| 009 | Production run and redeploy (team-lead run) | 008, 010 |
+| 011 | Only replace an existing social link when it is dead or on the wrong network | 010 |
+| 009 | Production run and redeploy (team-lead run) | 008, 010, 011 |
 
 Tickets execute serially in the order listed.
