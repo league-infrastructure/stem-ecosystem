@@ -388,3 +388,51 @@ def test_run_job_uses_secrets_bundle(tmp_path):
     )
     assert proc.returncode == 0
     assert "SUCCESS" in proc.stdout
+
+
+def test_run_job_profiles(tmp_path):
+    keys = ["DO_SPACES_ACCESS_KEY", "DO_SPACES_SECRET_KEY"]
+    proc, argv = run_job(tmp_path, ["profiles", "--slug", "foo"], keys)
+    assert proc.returncode == 0
+    assert argv == "profiles --slug foo"
+    (tmp_path / "argv.log").unlink()
+    proc, argv = run_job(tmp_path, ["profiles"], ["DO_SPACES_ACCESS_KEY"])
+    assert proc.returncode != 0 and argv is None
+    assert "FAILURE job=profiles missing=DO_SPACES_SECRET_KEY" in proc.stdout
+
+
+def test_run_job_updates_requires_anthropic_unless_no_llm(tmp_path):
+    keys = ["DO_SPACES_ACCESS_KEY", "DO_SPACES_SECRET_KEY"]
+    proc, argv = run_job(tmp_path, ["updates"], keys)
+    assert proc.returncode != 0 and argv is None
+    assert "FAILURE job=updates missing=ANTHROPIC_API_KEY" in proc.stdout
+    # --dry-run still calls Haiku, so it does not waive the key
+    proc, argv = run_job(tmp_path, ["updates", "--dry-run"], keys)
+    assert proc.returncode != 0 and argv is None
+    proc, argv = run_job(tmp_path, ["updates", "--no-llm", "--max-changes", "3"], keys)
+    assert proc.returncode == 0
+    assert argv == "updates --no-llm --max-changes 3"
+    proc, argv = run_job(tmp_path, ["updates", "--dry-run"])
+    assert proc.returncode == 0 and argv == "updates --dry-run"
+
+
+def test_run_job_new_jobs_log_to_own_dirs(tmp_path):
+    from partner_scrape.logs import LOG_TYPES
+
+    assert LOG_TYPES["profiles"] == "profiles"
+    assert LOG_TYPES["updates"] == "updates"
+
+
+def test_crontab_new_jobs_do_not_overlap():
+    lines = [
+        l.split(None, 5)
+        for l in (DOCKER / "crontab").read_text().splitlines()
+        if l and not l.startswith("#") and not l.startswith("CRON_TZ")
+    ]
+    sched = {l[5].split()[1]: (l[0], l[1], l[4]) for l in lines}
+    assert sched["profiles"] == ("0", "3", "0")
+    assert sched["updates"] == ("0", "5", "0")
+    assert sched["scrape"][2] == "1,4"
+    # distinct (day, hour) slots
+    slots = [(l[4], l[1]) for l in lines]
+    assert len(slots) == len(set(slots))

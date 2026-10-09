@@ -88,4 +88,6 @@ def test_crontab_schedule():
         "scrape": "0 3 * * 1,4",
         "teams": "0 3 * * 3",
         "directory": "0 3 * * 6",
+        "profiles": "0 3 * * 0",
+        "updates": "0 5 * * 0",
     }
