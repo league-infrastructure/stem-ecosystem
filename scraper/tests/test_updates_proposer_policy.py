@@ -136,32 +136,49 @@ def test_anthropic_proposer_uses_haiku_schema_and_no_api_key(monkeypatch):
 
 # ------------------------------------------------------------------ policy
 
-def run(*fields, **kw):
-    return apply_policy(CMOD_RECORD, Proposal(list(fields)), **kw)
+def run(*fields, record=None, flags_=None, snap=None, **kw):
+    return apply_policy(
+        record or CMOD_RECORD, Proposal(list(fields)),
+        flags=flags() if flags_ is None else flags_,
+        snapshot=cmod_snapshot() if snap is None else snap, **kw)
 
 
-def test_applies_allowlisted_high_confidence_and_is_pure():
+def review_fields(r):
+    return [i["field"] for i in r.needs_review]
+
+
+def moved_flag(severity="high"):
+    return {"kind": "website_moved", "severity": severity, "field": "website"}
+
+
+def test_applies_rebrand_fields_and_is_pure():
     before = json.dumps(CMOD_RECORD, sort_keys=True)
-    r = run(fp("website", "https://visitcmod.org"), fp("phone", "760-233-7755"),
+    r = run(fp("website", "https://visitcmod.org"),
             fp("facebook", "https://facebook.com/childrensmuseumofdiscovery"),
-            fp("description", "A hands-on museum."))
-    assert r.applied_fields == ["website", "phone", "facebook", "description"]
+            fp("description", "A hands-on museum."), fp("name", "Children's Museum of Discovery"))
+    assert r.applied_fields == ["website", "facebook", "description", "name"]
     assert r.applied["website"] == "https://visitcmod.org" and r.applied["slug"] == "cmod"
-    assert r.rejected == []
+    assert r.rejected == [] and r.needs_review == []
     assert json.dumps(CMOD_RECORD, sort_keys=True) == before
 
 
 def test_confidence_threshold_configurable():
-    p = fp("phone", "760-233-7755", conf=0.79)
+    p = fp("facebook", "https://facebook.com/x", conf=0.79)
     assert run(p).applied is None and "confidence" in run(p).rejected[0][1]
-    assert run(p, min_confidence=0.7).applied_fields == ["phone"]
-    assert run(fp("phone", "760-233-7755", conf=0.8)).applied_fields == ["phone"]
+    assert run(p, min_confidence=0.7).applied_fields == ["facebook"]
+    assert run(fp("facebook", "https://facebook.com/x", conf=0.8)).applied_fields == ["facebook"]
 
 
-@pytest.mark.parametrize("name", ["slug", "id", "latitude", "longitude", "organization_type", "logo_src", "bogus"])
+@pytest.mark.parametrize("name", ["slug", "id", "latitude", "longitude", "organization_type"])
 def test_protected_fields_never_change(name):
-    r = run(fp(name, "https://x.org/logo.png" if name == "logo_src" else "5", conf=1.0))
-    assert r.applied is None and r.rejected[0][0] == name
+    r = run(fp(name, "5", conf=1.0))
+    assert r.applied is None and r.rejected[0][0] == name and r.needs_review == []
+
+
+@pytest.mark.parametrize("name,value", [("logo_src", "https://visitcmod.org/l.png"), ("bogus", "5")])
+def test_logo_and_unknown_fields_are_needs_review(name, value):
+    r = run(fp(name, value, conf=1.0))
+    assert r.applied is None and r.rejected == [] and review_fields(r) == [name]
 
 
 @pytest.mark.parametrize("name", ["name", "phone", "email", "location", "website", "twitter", "description"])
@@ -171,31 +188,95 @@ def test_never_blank(name):
     assert r.rejected[0][0] == name
 
 
-def test_social_never_removed_but_dead_link_replaced():
+def test_social_never_removed_but_dead_link_replaced_same_network_only():
     r = run(fp("twitter", ""))
     assert r.applied is None and "report-only" in r.rejected[0][1]
     r = run(fp("twitter", "https://x.com/cmod"))
     assert r.applied["twitter"] == "https://x.com/cmod"
-    # wrong network host is rejected
     r = run(fp("twitter", "https://facebook.com/cmod"))
-    assert r.applied is None and "not a twitter domain" in r.rejected[0][1]
+    assert r.applied is None and "not a twitter domain" in r.needs_review[0]["reason"]
+
+
+def test_fill_empty_phone_email_social_applies():
+    rec = dict(CMOD_RECORD, phone="", email="", linkedin="")
+    r = run(fp("phone", "760-233-7755"), fp("email", "info@sdcdm.org"),
+            fp("linkedin", "https://linkedin.com/company/sdcdm"), record=rec)
+    assert r.applied_fields == ["phone", "email", "linkedin"] and r.needs_review == []
+
+
+@pytest.mark.parametrize("name,cur,new", [
+    ("email", "Samantha@theABF.org", "info@theabf.org"),
+    ("email", "bradford@bsd.education", "info@bsd.education"),
+    ("email", "lschmelz@csusm.edu", "cstem@csusm.edu"),
+    ("phone", "8189150336", "7607670446"),
+])
+def test_changing_existing_email_phone_is_needs_review(name, cur, new):
+    r = run(fp(name, new), record=dict(CMOD_RECORD, **{name: cur}))
+    assert r.applied is None and r.rejected == []
+    assert r.needs_review == [{"field": name, "current": cur, "proposed": new,
+                               "reason": r.needs_review[0]["reason"]}]
+
+
+@pytest.mark.parametrize("cur,new", [
+    ("Discover U at San Diego Public Library", "San Diego Public Library"),
+    ("EAA Chapter 14", "Chapter 14"),
+    ("Coronado Public Library", "Coronado Library"),
+])
+def test_lossy_names_need_review_without_rebrand_evidence(cur, new):
+    r = run(fp("name", new), record=dict(CMOD_RECORD, name=cur), flags_=[])
+    assert r.applied is None and review_fields(r) == ["name"]
+    # a medium website_moved is not rebrand evidence either
+    r = run(fp("name", new), record=dict(CMOD_RECORD, name=cur), flags_=[moved_flag("medium")])
+    assert r.applied is None
+    r = run(fp("name", new), record=dict(CMOD_RECORD, name=cur), flags_=[moved_flag()])
+    assert r.applied_fields == ["name"]
+
+
+@pytest.mark.parametrize("name", ["name", "description", "location"])
+def test_rebrand_fields_gated_on_high_website_moved(name):
+    assert run(fp(name, "New value"), flags_=[]).needs_review
+    assert run(fp(name, "New value"), flags_=[moved_flag()]).applied_fields == [name]
+
+
+def test_website_gating():
+    rec = dict(CMOD_RECORD, website="https://www.batiquitoslagoon.org")
+    stage = "https://batiquitos-lagoon-foundation-142729.multiscreensite.com/"
+    snap = cmod_snapshot()
+    snap["pages"]["home"]["final_url"] = stage
+    r = run(fp("website", stage), record=rec, flags_=[moved_flag()], snap=snap)
+    assert r.applied is None and "staging" in r.needs_review[0]["reason"]
+    # no website_moved flag
+    assert run(fp("website", "https://visitcmod.org"), flags_=[]).needs_review
+    # host differs from the observed redirect host
+    r = run(fp("website", "https://other.org"))
+    assert r.applied is None and "redirect host" in r.needs_review[0]["reason"]
+    # www is ignored
+    assert run(fp("website", "https://www.visitcmod.org/")).applied_fields == ["website"]
+
+
+def test_staging_host_suffix_match():
+    from partner_scrape.updates.policy import is_staging_host
+    for h in ("x.multiscreensite.com", "a.b.wixsite.com", "foo.github.io", "squarespace.com"):
+        assert is_staging_host(h)
+    assert not is_staging_host("notgithub.io") and not is_staging_host("visitcmod.org")
 
 
 def test_shape_checks():
     for f, v in (("email", "nope"), ("website", "visitcmod.org"), ("phone", "123")):
-        assert run(fp(f, v)).applied is None
+        assert run(fp(f, v), record=dict(CMOD_RECORD, **{f: ""})).applied is None
 
 
 def test_partial_apply_and_unchanged_value_skipped():
-    r = run(fp("phone", "760-233-7755"), fp("email", "info@visitcmod.org", conf=0.5),
-            fp("name", CMOD_RECORD["name"]))
-    assert r.applied_fields == ["phone"]
+    r = run(fp("facebook", "https://facebook.com/x"), fp("email", "info@visitcmod.org", conf=0.5),
+            fp("name", CMOD_RECORD["name"]), fp("phone", "760-233-7755"))
+    assert r.applied_fields == ["facebook"]
     assert [f for f, _ in r.rejected] == ["email"]
+    assert review_fields(r) == ["phone"]
 
 
 def test_record_validator_gate():
     bad = dict(CMOD_RECORD, latitude=1.0, longitude=2.0)
-    r = apply_policy(bad, Proposal([fp("phone", "760-233-7755")]))
+    r = run(fp("facebook", "https://facebook.com/x"), record=bad)
     assert r.applied is None and "validation" in r.rejected[0][1]
 
 
@@ -204,10 +285,14 @@ def test_cmod_end_to_end_with_fake(cache):
     fake = FakeProposer(default=Proposal([
         fp("website", "https://visitcmod.org/", 0.95),
         fp("name", "Children's Museum of Discovery", 0.9),
+        fp("facebook", "https://facebook.com/childrensmuseumofdiscovery", 0.9),
+        fp("description", "A hands-on museum.", 0.9),
+        fp("phone", "760-233-7755", 0.9),
         fp("twitter", "", 0.99),
         fp("logo_src", "https://visitcmod.org/l.png", 0.99),
     ]))
     prop, _ = propose_for_partner(CMOD_RECORD, flags(), snap, cache, fake)
-    r = apply_policy(CMOD_RECORD, prop)
-    assert r.applied_fields == ["website", "name"]
-    assert {f for f, _ in r.rejected} == {"twitter", "logo_src"}
+    r = apply_policy(CMOD_RECORD, prop, flags=flags(), snapshot=snap)
+    assert r.applied_fields == ["website", "name", "facebook", "description"]
+    assert {f for f, _ in r.rejected} == {"twitter"}
+    assert review_fields(r) == ["phone", "logo_src"]
