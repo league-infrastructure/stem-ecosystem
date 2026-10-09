@@ -1,10 +1,16 @@
 ---
 id: '045'
 title: Update page and request-update links on the site
-status: ticketing
+status: done
 branch: sprint/045-update-page-and-request-update-links-on-the-site
-use-cases: [SUC-001, SUC-002, SUC-003, SUC-004, SUC-005]
-issues: ["84"]
+use-cases:
+- SUC-001
+- SUC-002
+- SUC-003
+- SUC-004
+- SUC-005
+issues:
+- '84'
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
 
