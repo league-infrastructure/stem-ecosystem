@@ -1,10 +1,12 @@
 ---
 id: '003'
 title: profiles job and private snapshots
-status: open
+status: in-progress
 use-cases:
 - SUC-002
-depends-on: ['001', '002']
+depends-on:
+- '001'
+- '002'
 github-issue: ''
 issue: 74-weekly-scrape-of-partner-home-about-and-contact-pages.md
 completes_issue: true
