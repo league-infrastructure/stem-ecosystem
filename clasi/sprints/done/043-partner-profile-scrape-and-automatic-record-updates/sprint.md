@@ -1,7 +1,7 @@
 ---
 id: '043'
 title: Partner profile scrape and automatic record updates
-status: planning-docs
+status: done
 branch: sprint/043-partner-profile-scrape-and-automatic-record-updates
 use-cases:
 - SUC-001
