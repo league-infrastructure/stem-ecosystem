@@ -542,6 +542,21 @@ def _add_partners_subcommand(subparsers: argparse._SubParsersAction) -> None:
     sub.add_parser(
         "consolidate", help="Validate all records and write data/partners.json."
     )
+    mig = sub.add_parser(
+        "migrate",
+        help="One-time import: split src/data/partners.json + logos into the "
+        "bucket, copy cache/partner_log to history/partner_log.",
+    )
+    mig.add_argument("--site-dir", type=Path, default=None, help="Site checkout (default $SITE_DIR or cwd).")
+    mig.add_argument("--dry-run", action="store_true", help="Report only; write nothing.")
+    ver = sub.add_parser(
+        "verify-migration",
+        help="Compare consolidated records with a baseline roster (ignoring logo_src).",
+    )
+    ver.add_argument(
+        "--baseline", required=True,
+        help="Baseline roster JSON file, or '-' for stdin (git show HEAD:src/data/partners.json).",
+    )
     for p in (put, add):
         p.add_argument(
             "--by", default=None, help="Actor recorded in history (default person:$USER)."
@@ -580,6 +595,47 @@ def _run_partners(args: argparse.Namespace) -> int:
             if rec is None:
                 return fail(f"no record for slug {args.slug!r}")
             print(json.dumps(rec, indent=1, ensure_ascii=False))
+            return 0
+
+        if cmd == "migrate":
+            from partner_scrape.partners.migrate import MigrationError, migrate
+
+            site = args.site_dir or config.get_site_dir()
+            try:
+                report = migrate(
+                    site, data, config.get_history_store(),
+                    config.get_scrape_cache_store(), dry_run=args.dry_run,
+                )
+            except MigrationError as exc:
+                print(exc, file=sys.stderr)
+                return fail("migration refused; nothing was written")
+            print("\n".join(report.lines()))
+            return 0
+
+        if cmd == "verify-migration":
+            from partner_scrape.partners.migrate import (
+                MigrationError,
+                load_roster_file,
+                verify_migration,
+            )
+
+            if args.baseline == "-":
+                text = sys.stdin.read()
+                baseline = json.loads(text)
+                baseline = baseline["partners"] if isinstance(baseline, dict) else baseline
+            else:
+                try:
+                    baseline = load_roster_file(Path(args.baseline))
+                except MigrationError as exc:
+                    return fail(str(exc))
+            diffs, notes = verify_migration(data, baseline)
+            for n in notes:
+                print(f"NOTE {n}")
+            if diffs:
+                for d in diffs:
+                    print(f"DIFF {d}", file=sys.stderr)
+                return fail(f"verification FAILED: {len(diffs)} difference(s)")
+            print(f"partner-scrape partners: verification OK ({len(baseline)} partners identical apart from logo_src)")
             return 0
 
         if cmd == "consolidate":

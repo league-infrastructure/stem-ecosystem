@@ -403,3 +403,48 @@ class TestGrowthOverManyRuns:
             record([changed], log_dir=log_dir, partners_path=PARTNERS_PATH)
 
         assert len(_log_lines(jsonl_path)) == 2
+
+
+class TestRenameKeepsHistory:
+    """The history directory is keyed by the record's STORED slug, so a
+    rename (name changes, slug stays) appends to the same directory."""
+
+    def _roster(self, name: str) -> list[dict[str, Any]]:
+        return [{"id": 101, "slug": "coastal_roots_farm", "name": name}]
+
+    def test_rename_appends_to_same_directory(self, tmp_path):
+        log_dir = tmp_path / "partner_log"
+        record(
+            [_opportunity(slug="e1", title="One")],
+            log_dir=log_dir, partners_path=self._roster("Coastal Roots Farm"),
+        )
+        record(
+            [_opportunity(slug="e2", title="Two", partner_name="Coastal Roots Collective")],
+            log_dir=log_dir, partners_path=self._roster("Coastal Roots Collective"),
+        )
+        assert sorted(p.name for p in log_dir.iterdir()) == ["coastal_roots_farm"]
+        lines = _log_lines(log_dir / "coastal_roots_farm" / "opportunities.jsonl")
+        assert [x["slug"] for x in lines] == ["e1", "e2"]
+
+    def test_unmatched_name_falls_back_to_slugify(self, tmp_path):
+        log_dir = tmp_path / "partner_log"
+        record(
+            [_opportunity(partner_name="Unknown Org")],
+            log_dir=log_dir, partners_path=self._roster("Coastal Roots Farm"),
+        )
+        assert (log_dir / "unknown_org" / "opportunities.jsonl").exists()
+
+    def test_publish_reads_history_under_stored_slug(self, tmp_path):
+        from partner_scrape.export import publish
+
+        log_dir = tmp_path / "partner_log"
+        roster = self._roster("Renamed Farm")
+        record(
+            [_opportunity(partner_name="Renamed Farm", date_start="2099-01-01T09:00:00-07:00")],
+            log_dir=log_dir, partners_path=roster,
+        )
+        out = tmp_path / "out"
+        summary = publish.project(
+            log_dir=log_dir, partners_path=roster, own_data_dir=out,
+        )
+        assert summary["current_event_count"] == 1

@@ -201,8 +201,8 @@ def project(
     partner-scrape's own `{own_data_dir}/` tree.
 
     For every partner in the curated `partners_path` (not only ones
-    with an accumulated log), resolves its slug (`model.slugify`,
-    matching `partner_log.py`'s own resolution) and looks up
+    with an accumulated log), resolves its stored slug (matching
+    `partner_log.log_slug_for`) and looks up
     `{log_dir}/<slug>/opportunities.jsonl`. If present, collapses it to
     one record per event slug (last line wins) and splits into current/
     upcoming vs. past (`writer.is_current_or_upcoming`). If absent, that
@@ -260,11 +260,11 @@ def project(
     per_partner_events: dict[str, tuple[dict[str, Any], dict[str, Any]]] = {}
 
     for partner in partners:
-        # The accumulated log is keyed by slugify(name) (partner_log.py);
-        # the published event files by the record's stored slug, which is
-        # what consolidation puts in events_url.
-        log_slug = slugify(partner.get("name", ""))
-        partner_slug = partner.get("slug") or log_slug
+        # Both the accumulated log (partner_log.py) and the published event
+        # files are keyed by the record's stored slug, so a rename keeps its
+        # history. slugify(name) only for slug-less (list-based) records.
+        partner_slug = partner.get("slug") or slugify(partner.get("name", ""))
+        log_slug = partner_slug
         jsonl_key = f"{log_prefix}{log_slug}/{_JSONL_FILENAME}"
 
         collapsed = [_to_opportunity(entry) for entry in _collapse_last_line_wins(log_store, jsonl_key)]
