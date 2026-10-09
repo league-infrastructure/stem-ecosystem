@@ -1,10 +1,11 @@
 ---
 id: '005'
 title: Haiku proposer, content-hash cache, and apply policy
-status: open
+status: in-progress
 use-cases:
 - SUC-004
-depends-on: ['004']
+depends-on:
+- '004'
 github-issue: ''
 issue: 75-post-scrape-partner-record-update-check-with-haiku.md
 completes_issue: false
