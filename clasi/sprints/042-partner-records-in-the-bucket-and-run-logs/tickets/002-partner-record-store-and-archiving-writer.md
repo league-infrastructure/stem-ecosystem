@@ -1,7 +1,7 @@
 ---
 id: '002'
 title: Partner record store and archiving writer
-status: in-progress
+status: done
 use-cases:
 - SUC-001
 depends-on: []
@@ -19,11 +19,11 @@ Create `partner_scrape/partners/` with `records.py` (key layout, read/list recor
 
 ## Acceptance Criteria
 
-- [ ] Writer archives, writes, and appends change line in one code path; first write has nothing to archive
-- [ ] Logo writes use the same path (`data/partners/<slug>/logo.<ext>` public, archive `-logo.<ext>` private)
-- [ ] Records and logos are public-read; everything under history/ is private (test asserts ACL behavior with a fake S3 client)
-- [ ] Changed-fields diff recorded; no-op put writes nothing and logs nothing
-- [ ] Roster loader returns records keyed by stored slug
+- [x] Writer archives, writes, and appends change line in one code path; first write has nothing to archive
+- [x] Logo writes use the same path (`data/partners/<slug>/logo.<ext>` public, archive `-logo.<ext>` private)
+- [x] Records and logos are public-read; everything under history/ is private (test asserts ACL behavior with a fake S3 client)
+- [x] Changed-fields diff recorded; no-op put writes nothing and logs nothing
+- [x] Roster loader returns records keyed by stored slug
 
 ## Implementation Plan
 
