@@ -543,3 +543,18 @@ def resolve_data_store(location: str | Path | Store | None = None) -> Store:
         client = _get_s3_client() if text.startswith("s3://") else None
         return store_from_location(location, client, public_read=True)
     return location
+
+
+#: Environment variable for the partner-history location (private).
+PARTNER_SCRAPE_HISTORY_DIR_ENV_VAR = "PARTNER_SCRAPE_HISTORY_DIR"
+
+#: Default history location -- ``history/`` at the bucket root.
+DEFAULT_HISTORY_LOCATION = "s3://jtl-stem-ecosystem-scrape/history"
+
+
+def get_history_store() -> Store:
+    """Return the Store for ``history/`` (record/logo archives, change log).
+    Always private: never ``public_read``, unlike the data store."""
+    return _store_for(
+        PARTNER_SCRAPE_HISTORY_DIR_ENV_VAR, DEFAULT_HISTORY_LOCATION, public_read=False
+    )

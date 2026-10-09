@@ -196,7 +196,8 @@ def _hijacked_domain_offenders(partners: list[dict[str, Any]]) -> list[str]:
 
 
 def _duplicate_slug_offenders(partners: list[dict[str, Any]]) -> list[str]:
-    """Group `partners` by `model.slugify(name)` over the **raw** list
+    """Group `partners` by their stored `slug` (falling back to
+    `model.slugify(name)` for legacy rows without one) over the **raw** list
     passed in -- the caller (`validate_roster`) never passes a
     deduplicated view, which is exactly what makes this check able to
     catch issue 46's failure mode at all (see module docstring).
@@ -204,7 +205,7 @@ def _duplicate_slug_offenders(partners: list[dict[str, Any]]) -> list[str]:
     that group, not just the first pair."""
     rows_by_slug: dict[str, list[dict[str, Any]]] = {}
     for partner in partners:
-        slug = slugify(partner.get("name", ""))
+        slug = partner.get("slug") or slugify(partner.get("name", ""))
         rows_by_slug.setdefault(slug, []).append(partner)
 
     offenders: list[str] = []
