@@ -1,6 +1,10 @@
 ---
-status: pending
+status: in-progress
 sprint: '043'
+tickets:
+- 043-001
+- 043-008
+- 043-009
 ---
 
 # Detect and record redirects on every fetch

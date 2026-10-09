@@ -66,10 +66,10 @@ None for data. Image rebuild and swarm redeploy needed (team lead, ticket 009). 
 - Decision: event-quality checks live in `updates/quality.py`, report-only, so extraction fixes become separate issues.
 - Decision: dry-run still calls Haiku (to show real proposals) but writes nothing except the report/cache.
 
-## Open Questions
+## Open Questions (resolved by stakeholder, 2026-10-08)
 
-- Exact record field allowlist for auto-apply: default is name, website, phone, email, address fields, social links, description; ticket 005 must derive it from the `partners/records.py` validator and exclude anything else.
-- Severity-to-LLM trigger: default sends partners with any flag of severity >= medium; ticket 004 defines the table.
+- Auto-apply allowlist: name, website, phone, email, location, twitter, facebook, instagram, linkedin, description. Logo changes report-only; latitude/longitude, organization_type, id, slug never auto-change. Dead social links may be replaced by the site's current link, never removed unless the site links none (then report-only).
+- Partners with any flag of severity medium or higher go to Haiku.
 
 ## Self-review verdict: APPROVE WITH CHANGES
 
