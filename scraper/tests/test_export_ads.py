@@ -244,7 +244,7 @@ class TestRealSeedAdRegistry:
         assert league.headline
         assert league.body
         assert league.link.startswith("https://www.jointheleague.org")
-        assert league.logo_src == "the_league_of_amazing.png"
+        assert league.logo_src == "partners/the_league_of_amazing_programmers/logo.png"
 
     def test_real_seed_ad_exports_cleanly_to_a_tmp_own_data_dir(self, tmp_path):
         own_data_dir = tmp_path / "own-data"
