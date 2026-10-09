@@ -42,9 +42,10 @@ partner_log/<partner-slug>/opportunities.jsonl   -- append-only; one JSON
                                                    object per line
 ```
 
-These are keys in the scrape-cache `Store` (`config.get_scrape_cache_store()`),
-so they live under `SCRAPE_CACHE_DIR`'s `partner_log/` prefix -- local or
-bucket. An explicit `log_dir` instead roots a `LocalStore` at that
+These are keys in the history `Store` (`config.get_history_store()`,
+`PARTNER_SCRAPE_HISTORY_DIR`, private), so they live under the bucket's
+`history/partner_log/` prefix -- local or bucket. (Before sprint 042 they
+lived under `cache/partner_log/`; ticket 042-005 copies the old objects.) An explicit `log_dir` instead roots a `LocalStore` at that
 directory with the `partner_log/` prefix dropped (`<slug>/partner.json`).
 `resolve_log_store()` is the single place that decides this; `publish.py`
 reuses it.
@@ -89,13 +90,13 @@ from dataclasses import fields
 from pathlib import Path
 from typing import Any, Iterable
 
-from partner_scrape.config import get_scrape_cache_store, get_site_dir
+from partner_scrape.config import get_history_store
 from partner_scrape.model import slugify
 from partner_scrape.normalize.partners import find_partner, load_partners
 from partner_scrape.normalize.run import Opportunity
 from partner_scrape.storage import LocalStore, Store
 
-#: Key prefix (folder in the scrape-cache Store) the accumulation store
+#: Key prefix (folder in the history Store) the accumulation store
 #: lives under. Single source of truth: `export/publish.py` imports it.
 _LOG_SUBDIR = "partner_log"
 
@@ -154,23 +155,12 @@ def resolve_log_store(log_dir: str | Path | None) -> tuple[Store, str]:
     """Return ``(store, key_prefix)`` for the partner log.
 
     An explicit ``log_dir`` is a local directory (``LocalStore``, empty
-    prefix). ``None`` means the configured scrape-cache Store under the
+    prefix). ``None`` means the configured history Store under the
     ``partner_log/`` prefix.
     """
     if log_dir is not None:
         return LocalStore(Path(log_dir)), ""
-    return get_scrape_cache_store(), f"{_LOG_SUBDIR}/"
-
-
-def _default_partners_path() -> Path:
-    """`{site_dir}/src/data/partners.json` -- the same location
-    `pipeline.run()` resolves for `normalize.run()`'s own `partners_path`
-    (see `normalize/DESIGN.md`). Production callers (`pipeline.run()`)
-    always pass the exact value they already resolved rather than
-    relying on this default, so the two modules' partner join can never
-    disagree about which `partners.json` they read.
-    """
-    return get_site_dir() / "src" / "data" / "partners.json"
+    return get_history_store(), f"{_LOG_SUBDIR}/"
 
 
 def _to_log_dict(opportunity: Opportunity, content_hash: str) -> dict[str, Any]:
@@ -204,7 +194,7 @@ def record(
     opportunities: Iterable[Opportunity],
     *,
     log_dir: str | Path | None = None,
-    partners_path: str | Path | None = None,
+    partners_path: Any = None,
     dry_run: bool = False,
 ) -> None:
     """Accumulate `opportunities` into their partner's append-only log.
@@ -224,14 +214,14 @@ def record(
         opportunities: this run's normalized `Opportunity` records
             (typically `normalize.run()`'s output).
         log_dir: root of the per-partner accumulation store. Defaults to
-            the scrape-cache Store's `partner_log/` prefix when `None`
+            the history Store's `partner_log/` prefix when `None`
             (see `resolve_log_store`).
             Tests should always pass an explicit `tmp_path` here, never
             rely on the default.
-        partners_path: path to the site's curated `partners.json`.
-            Defaults to `{config.get_site_dir()}/src/data/partners.json`
-            when `None`. Production callers (`pipeline.run()`) pass the
-            exact value already resolved for `normalize.run()`.
+        partners_path: the curated roster (a list, a roster JSON file path
+            or a Store). Defaults to the data store's partner records when
+            `None`. Production callers (`pipeline.run()`) pass the exact
+            list already resolved for `normalize.run()`.
         dry_run: when `True`, compute the append/skip decision for every
             opportunity without touching disk at all -- no directory is
             created, no `partner.json` or `opportunities.jsonl` is
@@ -242,10 +232,7 @@ def record(
             created or written to (local store). Never silently skips accumulation.
     """
     log_store, prefix = resolve_log_store(log_dir)
-    resolved_partners_path = (
-        Path(partners_path) if partners_path is not None else _default_partners_path()
-    )
-    partners_by_norm = load_partners(resolved_partners_path)
+    partners_by_norm = load_partners(partners_path)
 
     by_slug: dict[str, list[Opportunity]] = defaultdict(list)
     for opportunity in opportunities:

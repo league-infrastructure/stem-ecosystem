@@ -11,6 +11,7 @@ from pathlib import Path
 
 import pytest
 
+from tests.roster_seed import seed_roster
 from partner_scrape.directory.model import Club, Offering, Place
 from partner_scrape.directory.pipeline import (
     DEFAULT_GEO_DATA_DIR,
@@ -107,10 +108,9 @@ def _write_real_partners_fixture(site_dir: Path) -> None:
     -- enough for `check_partner_references()` to resolve every real
     reference, without asserting anything about the fixture rows'
     content beyond their `id`."""
-    data_dir = site_dir / "src" / "data"
-    data_dir.mkdir(parents=True, exist_ok=True)
+    site_dir.mkdir(parents=True, exist_ok=True)
     partners = [{"id": pid, "name": f"Fixture Partner {pid}"} for pid in _real_related_partner_ids()]
-    (data_dir / "partners.json").write_text(json.dumps(partners), encoding="utf-8")
+    seed_roster(partners)
 
 
 class TestApplyGeoFallback:
@@ -676,11 +676,8 @@ class TestRelatedPartnerIdJoinIntegrity:
         )
 
         site_dir = tmp_path / "site"
-        data_dir = site_dir / "src" / "data"
-        data_dir.mkdir(parents=True)
-        (data_dir / "partners.json").write_text(
-            json.dumps([{"id": 1, "name": "Real Partner"}]), encoding="utf-8"
-        )
+        site_dir.mkdir(parents=True, exist_ok=True)
+        seed_roster([{"id": 1, "name": "Real Partner"}])
 
         with pytest.raises(RosterValidationError) as excinfo:
             run_directory(
@@ -714,11 +711,8 @@ class TestRelatedPartnerIdJoinIntegrity:
         )
 
         site_dir = tmp_path / "site"
-        data_dir = site_dir / "src" / "data"
-        data_dir.mkdir(parents=True)
-        (data_dir / "partners.json").write_text(
-            json.dumps([{"id": 1, "name": "Real Partner"}]), encoding="utf-8"
-        )
+        site_dir.mkdir(parents=True, exist_ok=True)
+        seed_roster([{"id": 1, "name": "Real Partner"}])
 
         payload = run_directory(
             registry_dir=registry_dir,
@@ -977,11 +971,8 @@ class TestOfferingRelatedPartnerIdJoinIntegrity:
         )
 
         site_dir = tmp_path / "site"
-        data_dir = site_dir / "src" / "data"
-        data_dir.mkdir(parents=True)
-        (data_dir / "partners.json").write_text(
-            json.dumps([{"id": 1, "name": "Real Partner"}]), encoding="utf-8"
-        )
+        site_dir.mkdir(parents=True, exist_ok=True)
+        seed_roster([{"id": 1, "name": "Real Partner"}])
 
         with pytest.raises(RosterValidationError) as excinfo:
             run_directory(
@@ -1016,11 +1007,8 @@ class TestOfferingRelatedPartnerIdJoinIntegrity:
         )
 
         site_dir = tmp_path / "site"
-        data_dir = site_dir / "src" / "data"
-        data_dir.mkdir(parents=True)
-        (data_dir / "partners.json").write_text(
-            json.dumps([{"id": 1, "name": "Real Partner"}]), encoding="utf-8"
-        )
+        site_dir.mkdir(parents=True, exist_ok=True)
+        seed_roster([{"id": 1, "name": "Real Partner"}])
 
         payload = run_directory(
             registry_dir=registry_dir,

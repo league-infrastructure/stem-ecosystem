@@ -16,6 +16,7 @@ from typing import Any
 
 import pytest
 
+from tests.roster_seed import seed_roster
 from partner_scrape.export import partner_log
 from partner_scrape.export.partner_log import published_content_hash, record
 from partner_scrape.normalize.run import Opportunity
@@ -337,24 +338,24 @@ class TestUnwritableTarget:
 
 
 class TestConfigDefaults:
-    def test_omitted_log_dir_resolves_via_config_get_scrape_cache_store(self, tmp_path, monkeypatch):
-        fake_cache_dir = tmp_path / "cache"
+    def test_omitted_log_dir_resolves_via_config_get_history_store(self, tmp_path, monkeypatch):
+        fake_history_dir = tmp_path / "hist"
         monkeypatch.setattr(
-            partner_log, "get_scrape_cache_store", lambda: LocalStore(fake_cache_dir)
+            partner_log, "get_history_store", lambda: LocalStore(fake_history_dir)
         )
 
         record([_opportunity()], partners_path=PARTNERS_PATH)
 
-        assert (fake_cache_dir / "partner_log" / "coastal_roots_farm" / "partner.json").exists()
+        assert (fake_history_dir / "partner_log" / "coastal_roots_farm" / "partner.json").exists()
 
-    def test_default_store_uses_partner_log_prefix_in_bucket(self, monkeypatch):
+    def test_default_store_uses_history_partner_log_prefix_in_bucket(self, monkeypatch):
         import boto3
         from moto import mock_aws
 
         with mock_aws():
             client = boto3.client("s3", region_name="us-east-1")
             client.create_bucket(Bucket="test-bucket")
-            monkeypatch.setenv("SCRAPE_CACHE_DIR", "s3://test-bucket/cache")
+            monkeypatch.setenv("PARTNER_SCRAPE_HISTORY_DIR", "s3://test-bucket/history")
             monkeypatch.setenv("DO_SPACES_ENDPOINT", "https://s3.us-east-1.amazonaws.com")
             monkeypatch.setenv("DO_SPACES_ACCESS_KEY", "k")
             monkeypatch.setenv("DO_SPACES_SECRET_KEY", "s")
@@ -365,18 +366,14 @@ class TestConfigDefaults:
                 o["Key"]
                 for o in client.list_objects_v2(Bucket="test-bucket")["Contents"]
             }
+            # history/partner_log, not the old cache/partner_log; never cache/.
             assert keys == {
-                "cache/partner_log/coastal_roots_farm/partner.json",
-                "cache/partner_log/coastal_roots_farm/opportunities.jsonl",
+                "history/partner_log/coastal_roots_farm/partner.json",
+                "history/partner_log/coastal_roots_farm/opportunities.jsonl",
             }
 
-    def test_omitted_partners_path_resolves_via_config_get_site_dir(self, tmp_path, monkeypatch):
-        fake_site_dir = tmp_path / "stem-ecosystem"
-        (fake_site_dir / "src" / "data").mkdir(parents=True)
-        (fake_site_dir / "src" / "data" / "partners.json").write_text(
-            json.dumps([{"id": 101, "name": "Coastal Roots Farm"}])
-        )
-        monkeypatch.setattr(partner_log, "get_site_dir", lambda: fake_site_dir)
+    def test_omitted_partners_path_reads_records_from_data_store(self, tmp_path):
+        seed_roster([{"id": 101, "name": "Coastal Roots Farm"}])
         log_dir = tmp_path / "partner_log"
 
         record([_opportunity()], log_dir=log_dir)

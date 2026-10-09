@@ -44,10 +44,9 @@ partner-scrape --help
 The wheel bundles the seed source registry, the in-package data files and
 `data-schema.md`. A real run still needs the bucket credentials below;
 without them, point `SCRAPE_CACHE_DIR` and `PARTNER_SCRAPE_DATA_DIR` at local
-directories. A run also reads the curated roster `src/data/partners.json` from the
-site (`--site-dir` / `SITE_DIR`, default the current directory). From
-`scraper/` that is the repo root, so pass `--site-dir ..` (or set
-`SITE_DIR=..`).
+directories. A run also reads the curated roster from the per-partner records in the data
+location (`partners/<slug>/partner.json` under `PARTNER_SCRAPE_DATA_DIR`), not
+from the site checkout; see "Running locally" below.
 
 ### Scheduled runs (container)
 
@@ -63,7 +62,8 @@ git**. For a real run set `DO_SPACES_ENDPOINT`, `DO_SPACES_ACCESS_KEY` and
 `set -a; source ../.env; set +a` from `scraper/`). To work locally instead, point
 `SCRAPE_CACHE_DIR` and `PARTNER_SCRAPE_DATA_DIR` at local directories (a
 path or an `s3://bucket/prefix` URL; see `partner_scrape/config.py`).
-`SITE_DIR` defaults to the current directory; from `scraper/` use `..`. The seed registry ships inside the package
+`--site-dir` / `SITE_DIR` no longer locate the roster (kept for compatibility;
+nothing is written there). The seed registry ships inside the package
 (`partner_scrape/registry_data/`); set `PARTNER_SCRAPE_REGISTRY_DIR` to a
 local directory (with `sources/`, `hubs/`, `candidates/`, `ads/`) to
 override it.
@@ -71,7 +71,29 @@ override it.
 ```bash
 export SCRAPE_CACHE_DIR=/path/to/a/cache/dir
 export PARTNER_SCRAPE_DATA_DIR=/path/to/a/data/dir
+export PARTNER_SCRAPE_HISTORY_DIR=/path/to/a/history/dir
 ```
+
+#### Running locally
+
+The curated roster is the set of `partners/<slug>/partner.json` records in the
+data location, so a local run needs a local data dir that contains them. Also
+set `PARTNER_SCRAPE_HISTORY_DIR` locally: the per-partner event log
+(`partner_log/`) and the record archive now live under `history/`, which
+otherwise defaults to the real bucket. Seed the local data dir either by
+copying `data/partners/` out of the bucket (read-only, with your S3 tool of
+choice) or by creating records with the CLI:
+
+```bash
+export PARTNER_SCRAPE_DATA_DIR=/tmp/ps/data PARTNER_SCRAPE_HISTORY_DIR=/tmp/ps/history
+export SCRAPE_CACHE_DIR=/tmp/ps/cache
+uv run partner-scrape partners add --name "Example Org" --file example.json
+uv run partner-scrape --source xplorstem        # reads the local roster
+```
+
+An empty roster fails loudly ("No partner records found"). Library callers and
+tests can bypass the store entirely by passing `partners_path=` (a roster JSON
+file or a list of partner dicts) to `pipeline.run()`.
 
 ### Run
 

@@ -1,11 +1,9 @@
-"""Partner join: normalized-org-name lookup against the site's `partners.json`.
+"""Partner join: normalized-org-name lookup against the curated roster.
 
-Reads (never writes) the site's `partners.json` -- see sprint.md's
-Architecture > Normalize & Dedup boundary ("Inside: ... partner join
-(reads the site's `partners.json` read-only)") and Impact on Existing
-Components ("the partner join in Normalize & Dedup reads the site's
-`../stem-ecosystem/src/data/partners.json` directly, matching
-`dev/export_site.py`'s existing behavior").
+Reads (never writes) the roster. Since sprint 042 the roster is the
+per-partner records in the data store (`partners/<slug>/partner.json`),
+resolved by `partners.source.resolve_partners`; it is no longer the
+site's `src/data/partners.json`.
 
 No match -> the caller keeps the org name and leaves `partner_id`
 unset (SUC-005's documented error flow). This module never raises for
@@ -14,10 +12,10 @@ an unmatched org -- :func:`find_partner` just returns `None`.
 
 from __future__ import annotations
 
-import json
 import re
-from pathlib import Path
 from typing import Any
+
+from partner_scrape.partners.source import resolve_partners
 
 _NON_ALNUM_RE = re.compile(r"[^a-z0-9 ]")
 _LEADING_THE_RE = re.compile(r"^the ")
@@ -38,13 +36,17 @@ def normalize_org_name(name: str) -> str:
     return _WHITESPACE_RE.sub(" ", no_leading_the).strip()
 
 
-def load_partners(partners_path: str | Path) -> dict[str, dict[str, Any]]:
-    """Load `partners.json` into a dict keyed by :func:`normalize_org_name`.
+def load_partners(partners: Any = None) -> dict[str, dict[str, Any]]:
+    """Load the roster into a dict keyed by :func:`normalize_org_name`.
+
+    ``partners`` is anything `partners.source.resolve_partners` accepts:
+    ``None`` (the data store's partner records), a Store, a list, or a
+    path to a roster JSON file.
 
     The first partner record wins a normalized-name collision, matching
     `dev/export_site.py`'s `load_site_partners`'s `setdefault` behavior.
     """
-    data = json.loads(Path(partners_path).read_text())
+    data = resolve_partners(partners)
     by_norm: dict[str, dict[str, Any]] = {}
     for partner in data:
         by_norm.setdefault(normalize_org_name(partner.get("name", "")), partner)

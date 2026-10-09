@@ -43,7 +43,7 @@ import logging
 import sys
 from pathlib import Path
 
-from partner_scrape.config import get_data_store, get_site_dir
+from partner_scrape.config import get_data_store
 from partner_scrape.export import publish
 from partner_scrape.export.schema_doc import publish_schema_doc
 from partner_scrape.enrich.cache import EnrichmentCache
@@ -105,10 +105,10 @@ def _build_parser() -> argparse.ArgumentParser:
         type=Path,
         default=None,
         help=(
-            "Sibling stem-ecosystem checkout to read partners.json from "
-            "(default: $SITE_DIR, else the current directory). Read-only as of "
-            "sprint 025 -- opportunities.json/scrape-meta.json/images are "
-            "written to partner-scrape's own data/ directory, never here."
+            "Sibling stem-ecosystem checkout. Unused for the partner roster "
+            "since sprint 042 (it is read from the data store's "
+            "partners/<slug>/partner.json; see PARTNER_SCRAPE_DATA_DIR) -- "
+            "kept for compatibility. Nothing is written here."
         ),
     )
     parser.add_argument(
@@ -386,12 +386,10 @@ def _add_directory_subcommand(subparsers: argparse._SubParsersAction) -> None:
         type=Path,
         default=None,
         help=(
-            "Sibling stem-ecosystem checkout to read partners.json from, "
-            "for the related-partner-reference join-integrity check only "
-            "(default: $SITE_DIR, else the current directory) -- same default "
-            "as the `run` command's --site-dir. Read-only: places.json/ "
-            "clubs.json/offerings.json are always written to "
-            "partner-scrape's own data/ directory, never here."
+            "Unused since sprint 042 (the related-partner-reference check "
+            "reads the data store's partner records); kept for "
+            "compatibility. places.json/clubs.json/offerings.json are "
+            "always written to partner-scrape's own data/ directory."
         ),
     )
     parser.add_argument(
@@ -729,12 +727,14 @@ def main(argv: list[str] | None = None) -> int:
     # exit code below instead.
     publish_failed = False
     if not args.dry_run:
-        publish_site_dir = args.site_dir if args.site_dir is not None else get_site_dir()
         try:
-            publish.project(
-                site_dir=publish_site_dir,
-                partners_path=publish_site_dir / "src" / "data" / "partners.json",
-            )
+            publish.project(site_dir=args.site_dir)
+            # Sprint 042 ticket 004: partners.json is composed from the
+            # per-partner records (not hand-built by publish.project).
+            # Same failure isolation as project(): logged, non-zero exit.
+            from partner_scrape.partners.consolidate import consolidate
+
+            consolidate(get_data_store())
         except Exception:
             publish_failed = True
             logger.exception(

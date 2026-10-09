@@ -428,8 +428,7 @@ title+date collision case.
   now uses to build `Opportunity.slug`, promoted to `model.py` because
   `export/partner_log.py` needs the identical function for partner slugs. See the root
   `partner_scrape/DESIGN.md`.
-- **The site's `partners.json`** — read-only, at a path the caller supplies (defaulting to
-  `{site_dir}/src/data/partners.json`).
+- **The partner roster** — read-only; since sprint 042 the per-partner records in the data store (or a list/file the caller supplies), via `partners.source.resolve_partners`.
 - **An `image_resolver` callable** — supplied by `pipeline.run()`, backed by
   `export.images.EventImageDownloader.download`. Consumed as a bare callable so no import
   edge to `export/` exists. See `export/DESIGN.md`.

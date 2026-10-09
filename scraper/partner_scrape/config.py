@@ -467,7 +467,8 @@ def _get_s3_client() -> Any:
             f"{', '.join(missing)} not set, but an s3:// location is in "
             "effect. Set them in the assembled .env (see "
             "config/prod/public.env and secrets.env), or point "
-            f"{SCRAPE_CACHE_DIR_ENV_VAR}/{PARTNER_SCRAPE_DATA_DIR_ENV_VAR} at "
+            f"{SCRAPE_CACHE_DIR_ENV_VAR}/{PARTNER_SCRAPE_DATA_DIR_ENV_VAR}/"
+                "PARTNER_SCRAPE_HISTORY_DIR at "
             "a local directory to run without the bucket."
         )
     endpoint = _validate_endpoint(values[DO_SPACES_ENDPOINT_ENV_VAR])

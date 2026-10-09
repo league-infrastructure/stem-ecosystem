@@ -24,7 +24,6 @@ real-network attempt fails loudly rather than silently succeeding.
 from __future__ import annotations
 
 import json
-import shutil
 import sys
 import threading
 from dataclasses import dataclass, field
@@ -45,6 +44,8 @@ from partner_scrape.registry.validate_roster import RosterValidationError
 
 FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
 E2E_REGISTRY_DIR = FIXTURES_DIR / "e2e_registry"
+from tests.roster_seed import seed_roster, seed_roster_file
+
 PARTNERS_FIXTURE = FIXTURES_DIR / "partners.json"
 
 #: Ticket 005 fixture directories -- see this file's bottom two test
@@ -184,12 +185,12 @@ class RecordingIdentityEnricher:
 
 def _site_dir(tmp_path: Path) -> Path:
     """A tmp_path-backed stand-in for the sibling stem-ecosystem repo,
-    with `src/data/partners.json` seeded from the shared fixture --
-    never a real stem-ecosystem checkout."""
+    (the roster no longer lives there). The shared partner fixture is
+    seeded as per-partner records into the data store
+    ($PARTNER_SCRAPE_DATA_DIR) -- never a real stem-ecosystem checkout."""
     site_dir = tmp_path / "stem-ecosystem"
-    data_dir = site_dir / "src" / "data"
-    data_dir.mkdir(parents=True)
-    shutil.copy(PARTNERS_FIXTURE, data_dir / "partners.json")
+    site_dir.mkdir(parents=True)
+    seed_roster_file(PARTNERS_FIXTURE)
     return site_dir
 
 
@@ -383,15 +384,14 @@ class TestRosterValidationWiring:
         self, tmp_path, dry_run, _own_data_dir_default
     ):
         site_dir = _site_dir(tmp_path)
-        partners_path = site_dir / "src" / "data" / "partners.json"
-        partners = json.loads(partners_path.read_text())
+        partners = json.loads(PARTNERS_FIXTURE.read_text())
         # Bare-California geocoder centroid (validate_roster.py's
         # BARE_CALIFORNIA_CENTROID) -- one offending row is enough to
         # prove the wiring; ticket 002's own tests already prove every
         # check fires in isolation.
         partners[0]["latitude"] = 36.778261
         partners[0]["longitude"] = -119.417932
-        partners_path.write_text(json.dumps(partners))
+        seed_roster(partners)
         fetcher = _fixture_fetcher()
 
         with pytest.raises(RosterValidationError):
@@ -856,14 +856,13 @@ class TestLimitAndSourceFilters:
         assert fetcher.calls == [BROKEN_PROBE_URL]
 
 
-class TestPartnersPathDefaultsFromSiteDir:
-    def test_omitted_partners_path_resolves_under_site_dir_by_convention(self, tmp_path):
+class TestPartnersDefaultFromDataStore:
+    def test_omitted_partners_path_reads_records_from_data_store(self, tmp_path):
         site_dir = _site_dir(tmp_path)
         fetcher = _fixture_fetcher()
 
-        # No explicit partners_path -- must resolve to
-        # {site_dir}/src/data/partners.json, matching sprint.md's
-        # documented Site Export/Normalize contract.
+        # No explicit partners_path -- the roster comes from the
+        # partners/<slug>/partner.json records in the data store.
         payload = run(
             registry_dir=E2E_REGISTRY_DIR, site_dir=site_dir, fetcher=fetcher, today=TODAY
         )

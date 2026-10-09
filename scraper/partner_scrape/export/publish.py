@@ -7,8 +7,11 @@ log is not itself a publishable contract -- it can hold several lines
 for the same event (one per content change) and is keyed only by
 whatever partners happened to yield opportunities on some past run. This
 module turns that accumulated state into issue 15's actual public data
-contract: a partner roster (`{own_data_dir}/partners.json`) plus, per
-partner, a current/upcoming events file and a past-events file.
+contract: per partner, a current/upcoming events file and a past-events
+file. The partner roster itself (`{own_data_dir}/partners.json`) is no
+longer written here (sprint 042): it is composed from the per-partner
+records by `partners.consolidate.consolidate()`, which the CLI runs right
+after this projection.
 
 Sprint 025 ticket 007 (issue 21, "stop writing to the stem-ecosystem
 checkout") redirected this projection's write target from
@@ -16,10 +19,9 @@ checkout") redirected this projection's write target from
 (since sprint 038 the data Store, `config.get_data_store()`), matching every other sprint-020 export
 module's convention -- for stem-ecosystem (or any consumer) to pull
 from at its own build time, rather than partner-scrape writing directly
-into a sibling checkout. `site_dir` stays as a parameter: it still
-resolves the default `partners_path` (the curated roster this
-projection reads and joins against), which this ticket leaves
-untouched.
+into a sibling checkout. `site_dir` stays as a parameter for
+compatibility but no longer locates the roster (sprint 042: the roster
+is the data store's partner records).
 
 ## Self-describing, not just "correct"
 
@@ -71,23 +73,13 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from partner_scrape.config import get_site_dir, resolve_data_store
+from partner_scrape.config import resolve_data_store
 from partner_scrape.export.partner_log import _JSONL_FILENAME, resolve_log_store
 from partner_scrape.export.writer import SITE_SCHEMA_FIELDS, is_current_or_upcoming, to_json_dict
 from partner_scrape.model import slugify
-from partner_scrape.partners.consolidate import build_envelope, published_entry
+from partner_scrape.partners.source import resolve_partners
 from partner_scrape.normalize.run import Opportunity
 from partner_scrape.storage import Store
-
-def _default_partners_path() -> Path:
-    """`{site_dir}/src/data/partners.json` -- matches `partner_log.py`'s
-    own default and `pipeline.run()`'s resolution for `normalize.run()`.
-    Production callers (`cli.py`) always pass the exact value they
-    already resolved for `site_dir`, so this default's independent call
-    to `get_site_dir()` cannot disagree with an explicit `--site-dir`.
-    """
-    return get_site_dir() / "src" / "data" / "partners.json"
-
 
 def _now_iso() -> str:
     """Current UTC time, matching `writer.py`'s `_now_iso()` format
@@ -200,7 +192,7 @@ def project(
     site_dir: str | Path | None = None,
     *,
     log_dir: str | Path | None = None,
-    partners_path: str | Path | None = None,
+    partners_path: Any = None,
     own_data_dir: str | Path | Store | None = None,
     today: date | None = None,
     dry_run: bool = False,
@@ -214,39 +206,30 @@ def project(
     `{log_dir}/<slug>/opportunities.jsonl`. If present, collapses it to
     one record per event slug (last line wins) and splits into current/
     upcoming vs. past (`writer.is_current_or_upcoming`). If absent, that
-    partner still appears in `partners.json`, with empty event files.
+    partner still gets (empty) event files.
 
     Writes:
-        - `{own_data_dir}/partners.json` -- every curated partner's full
-          curated record plus `slug`, `events_url`, and `past_events_url`
-          (paths relative to `own_data_dir`), wrapped in a
-          `generated_at`/`partner_count` envelope.
         - `{own_data_dir}/partners/<slug>/events.json` and
           `.../past-events.json` per partner -- each an envelope
           (`generated_at`/`kind`/`event_count`) around an `events` array
           using exactly `writer.SITE_SCHEMA_FIELDS` (`sources` excluded,
           matching `opportunities.json`).
 
+    `partners.json` is not written here: `partners.consolidate` composes
+    it from the per-partner records (the CLI runs it after this).
     `own_data_dir/opportunities.json` (written by `export_opportunities`)
     is untouched -- this is a purely additive second contract.
 
     Args:
-        site_dir: path to the sibling `stem-ecosystem` checkout. Used
-            only to resolve the default `partners_path`
-            (`{site_dir}/src/data/partners.json`) when `partners_path`
-            is not given explicitly -- this function never writes
-            anywhere under `site_dir`. Defaults to `config.get_site_dir()`
-            when `None`. Tests should always pass an explicit `tmp_path`.
+        site_dir: unused since sprint 042 (kept for caller
+            compatibility); this function never touches `site_dir`.
         log_dir: root of the per-partner accumulation store
             (`partner_log.py`'s `log_dir`). Defaults to
-            the scrape-cache Store's `partner_log/` prefix
+            the history Store's `partner_log/` prefix
             (`partner_log.resolve_log_store`).
-        partners_path: path to the curated `partners.json` this
-            projection joins against. Defaults to
-            `{site_dir}/src/data/partners.json` -- note this is a
-            different file from the `{own_data_dir}/partners.json` this
-            function writes (see `export/DESIGN.md`'s Open Questions on
-            the naming overlap).
+        partners_path: the curated roster to project (a list, a roster
+            JSON file, or a Store). Defaults to the partner records in
+            the `own_data_dir` store.
         own_data_dir: where to write -- a local path, an `s3://` location,
             or a `Store`; this function's sole write target. Defaults to
             `config.get_data_store()` when `None`. A local directory is
@@ -262,44 +245,27 @@ def project(
         `past_event_count`.
 
     Raises:
-        RuntimeError: `partners_path` cannot be read (e.g. `site_dir`
-            does not exist and no explicit `partners_path` was given),
+        RuntimeError: the roster cannot be read or is empty,
             or `own_data_dir` cannot be created/written (e.g. the path
             is occupied by a file). Never silently skips the write,
             matching `export_opportunities`'s loud-failure contract.
     """
-    resolved_site_dir = Path(site_dir) if site_dir is not None else get_site_dir()
     log_store, log_prefix = resolve_log_store(log_dir)
-    resolved_partners_path = (
-        Path(partners_path) if partners_path is not None else _default_partners_path()
-    )
+    store = resolve_data_store(own_data_dir)
+    partners = resolve_partners(partners_path if partners_path is not None else store)
     reference_date = today if today is not None else date.today()
 
-    # own_data_dir is created automatically if missing (see docstring),
-    # matching every other sprint-020 export function's convention --
-    # it is never a hard precondition the way site_dir used to be when
-    # it was still this function's write target. partners_path is the
-    # one thing that must already exist: it is read-only input, not
-    # something this function can create on a caller's behalf, so a
-    # missing/unreadable partners_path still fails loudly here rather
-    # than propagating a bare FileNotFoundError.
-    try:
-        partners = json.loads(resolved_partners_path.read_text(encoding="utf-8"))
-    except OSError as exc:
-        raise RuntimeError(
-            f"Cannot read curated partners file at {resolved_partners_path}: "
-            f"{exc}. Check --site-dir ({resolved_site_dir}) or SITE_DIR, or "
-            "pass partners_path directly."
-        ) from exc
-
-    published_partners: list[dict[str, Any]] = []
     total_current = 0
     total_past = 0
     per_partner_events: dict[str, tuple[dict[str, Any], dict[str, Any]]] = {}
 
     for partner in partners:
-        partner_slug = slugify(partner.get("name", ""))
-        jsonl_key = f"{log_prefix}{partner_slug}/{_JSONL_FILENAME}"
+        # The accumulated log is keyed by slugify(name) (partner_log.py);
+        # the published event files by the record's stored slug, which is
+        # what consolidation puts in events_url.
+        log_slug = slugify(partner.get("name", ""))
+        partner_slug = partner.get("slug") or log_slug
+        jsonl_key = f"{log_prefix}{log_slug}/{_JSONL_FILENAME}"
 
         collapsed = [_to_opportunity(entry) for entry in _collapse_last_line_wins(log_store, jsonl_key)]
         current, past = _split_current_and_past(collapsed, reference_date)
@@ -311,10 +277,8 @@ def project(
             _events_payload("past", partner_slug, past),
         )
 
-        published_partners.append(published_entry(partner, partner_slug))
-
     summary = {
-        "partner_count": len(published_partners),
+        "partner_count": len(per_partner_events),
         "current_event_count": total_current,
         "past_event_count": total_past,
     }
@@ -322,15 +286,7 @@ def project(
     if dry_run:
         return summary
 
-    partners_payload = build_envelope(published_partners, _now_iso())
-
-    store = resolve_data_store(own_data_dir)
     try:
-        store.write_text(
-            "partners.json",
-            json.dumps(partners_payload, indent=1, ensure_ascii=False),
-            "application/json",
-        )
         for partner_slug, (events_payload, past_events_payload) in per_partner_events.items():
             store.write_text(
                 f"partners/{partner_slug}/events.json",

@@ -46,7 +46,7 @@ from pathlib import Path
 from typing import Any, Callable, Protocol, Sequence
 
 from partner_scrape.adapters import run as run_adapter
-from partner_scrape.config import get_data_store, get_site_dir
+from partner_scrape.config import get_data_store
 from partner_scrape.export import (
     EventImageDownloader,
     export_ads,
@@ -58,6 +58,7 @@ from partner_scrape.fetch import Fetcher, PlaywrightFetcher, PoliteFetcher
 from partner_scrape.model import Event
 from partner_scrape.normalize import run as normalize_run
 from partner_scrape.normalize.partners import load_partners
+from partner_scrape.partners.source import resolve_partners
 from partner_scrape.registry import load_active_sources
 from partner_scrape.registry.schema import SourceConfig
 from partner_scrape.registry.validate_roster import (
@@ -324,7 +325,7 @@ def run(
     headless_fetcher_factory: Callable[[], Fetcher] | None = None,
     enrichers: Sequence[Enricher] = (),
     reporter: Reporter | None = None,
-    partners_path: str | Path | None = None,
+    partners_path: Any = None,
     source_id: str | None = None,
     limit: int | None = None,
     today: date | None = None,
@@ -339,13 +340,11 @@ def run(
         registry_dir: Source Registry directory to load sources from.
             Defaults to the bundled registry (or `$PARTNER_SCRAPE_REGISTRY_DIR/sources`) when
             omitted -- see `registry.load_active_sources`.
-        site_dir: sibling `stem-ecosystem` checkout to read from --
-            specifically, `partners_path`'s default location (see below).
-            Defaults to `Config.get_site_dir()` (`$SITE_DIR`, else the
-            current directory) when omitted. Read-only as of sprint 025 ticket
-            007: nothing this function does writes into `site_dir`.
-            Tests should always pass an explicit `tmp_path`-based
-            directory here.
+        site_dir: sibling `stem-ecosystem` checkout. Unused for the
+            roster since sprint 042 (the roster comes from the data
+            store's partner records); kept so existing callers and
+            `--site-dir` still work. Nothing this function does writes
+            into `site_dir`.
         ads_dir: directory of hand-authored ad-config TOML files (Ad
             Content Export, sprint 005 ticket 005). Defaults to the real
             bundled ad registry (or `$PARTNER_SCRAPE_REGISTRY_DIR/ads`) when
@@ -381,9 +380,10 @@ def run(
             once after normalization with the final `Opportunity`
             list. Defaults to a no-op when omitted -- see `Reporter`'s
             docstring.
-        partners_path: path to the site's `partners.json`. Defaults to
-            `{site_dir}/src/data/partners.json` (sprint.md's documented
-            location) when omitted.
+        partners_path: optional explicit roster override (a roster JSON
+            file path, a list of partner dicts, or a Store). Defaults to
+            the data store's partner records
+            (`partners/<slug>/partner.json` under `PARTNER_SCRAPE_DATA_DIR`).
         source_id: when given, run only the active source whose
             `source_id` matches (the registry TOML file's stem) -- the
             CLI's `--source` flag.
@@ -559,12 +559,10 @@ def run(
     for enricher in enrichers:
         events = list(enricher.enrich(events))
 
-    resolved_site_dir = Path(site_dir) if site_dir is not None else get_site_dir()
-    resolved_partners_path = (
-        Path(partners_path)
-        if partners_path is not None
-        else resolved_site_dir / "src" / "data" / "partners.json"
-    )
+    # The roster is the per-partner records in the data store (sprint 042);
+    # resolve it once and hand the same list to every consumer below so
+    # they can never disagree about which roster they read.
+    raw_partners = resolve_partners(partners_path)
 
     # Roster data-quality and join-integrity validation (issue 48,
     # ticket 003) -- runs here, immediately after `resolved_partners_path`
@@ -584,7 +582,6 @@ def run(
     # name-deduplicated `partners_by_norm` -- see `validate_roster`'s
     # own module docstring for why only the raw list can catch issue
     # 46's exact failure mode (a duplicate-slug collision).
-    raw_partners = json.loads(resolved_partners_path.read_text(encoding="utf-8"))
     validate_roster(raw_partners)
 
     # Join-integrity check: registry sources whose `org_name` has no
@@ -595,7 +592,7 @@ def run(
     # (accepted per sprint.md's Migration Concerns) rather than adapting
     # `raw_partners` in memory, so this reuses `normalize.partners`'s own
     # normalized-name join logic instead of duplicating it here.
-    partners_by_norm = load_partners(resolved_partners_path)
+    partners_by_norm = load_partners(raw_partners)
     unresolved_org_names = find_unresolved_active_sources(sources, partners_by_norm)
     if unresolved_org_names:
         logger.warning(
@@ -631,7 +628,7 @@ def run(
 
     opportunities = normalize_run(
         events,
-        resolved_partners_path,
+        raw_partners,
         source_org_names=source_org_names,
         source_taxonomy_defaults=source_taxonomy_defaults,
         image_resolver=resolved_image_resolver,
@@ -650,7 +647,7 @@ def run(
     # never written, under `dry_run`).
     partner_log.record(
         opportunities,
-        partners_path=resolved_partners_path,
+        partners_path=raw_partners,
         dry_run=dry_run,
     )
 

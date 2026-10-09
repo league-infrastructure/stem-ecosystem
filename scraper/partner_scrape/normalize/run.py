@@ -418,7 +418,7 @@ def _to_opportunity(
 
 def run(
     events: Iterable[Event],
-    partners_path: str | Path,
+    partners_path: Any,
     source_org_names: dict[str, str] | None = None,
     source_taxonomy_defaults: dict[str, dict[str, Any]] | None = None,
     today: date | None = None,
@@ -428,7 +428,10 @@ def run(
 
     Args:
         events: canonical Events from any number of adapters/sources.
-        partners_path: path to the site's `partners.json` (read-only).
+        partners_path: the curated roster (read-only): anything
+            `partners.source.resolve_partners` accepts -- a list of
+            partner dicts, a roster JSON file path, a Store, or `None`
+            for the data store's partner records.
         source_org_names: optional `source_id -> org_name` map, used
             only for the partner-name join. The canonical `Event` (ticket
             001's model, not extended by this ticket) carries no

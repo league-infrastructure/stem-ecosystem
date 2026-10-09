@@ -270,9 +270,8 @@ class TestJoinAgainstCuratedPartners:
             today=date(2026, 7, 19),
         )
 
-        partners = _partners_json(own_data_dir)["partners"]
-        names = {p["name"] for p in partners}
-        assert names == {"Coastal Roots Farm", "The Living Coast Discovery Center", "Ocean Connectors"}
+        for slug in ("coastal_roots_farm", "the_living_coast_discovery_center", "ocean_connectors"):
+            assert (own_data_dir / "partners" / slug / "events.json").exists()
         assert summary["partner_count"] == 3
         assert summary["current_event_count"] == 0
         assert summary["past_event_count"] == 0
@@ -318,7 +317,9 @@ class TestJoinAgainstCuratedPartners:
         ocean_events = _events_json(own_data_dir, "ocean_connectors")
         assert ocean_events["event_count"] == 0
 
-    def test_partners_json_full_curated_record_plus_reference_paths(self, tmp_path):
+    def test_project_no_longer_writes_partners_json(self, tmp_path):
+        """Sprint 042: partners.json is composed from the records by
+        `partners.consolidate`, not hand-built by `project()`."""
         log_dir = tmp_path / "partner_log"
         site_dir = _site_dir(tmp_path)
         own_data_dir = _own_data_dir(tmp_path)
@@ -331,21 +332,44 @@ class TestJoinAgainstCuratedPartners:
             today=date(2026, 7, 19),
         )
 
+        assert not (own_data_dir / "partners.json").exists()
+
+    def test_event_files_use_the_records_stored_slug(self, tmp_path):
+        """The published path follows the record's stored slug (what
+        consolidation puts in events_url), even if it differs from
+        slugify(name); the accumulated log is still found by name."""
+        own_data_dir = _own_data_dir(tmp_path)
+        log_dir = tmp_path / "partner_log"
+        partners = [{"id": 101, "name": "Coastal Roots Farm", "slug": "crf"}]
+        partner_log.record([_opportunity()], log_dir=log_dir, partners_path=partners)
+
+        project(
+            log_dir=log_dir,
+            partners_path=partners,
+            own_data_dir=own_data_dir,
+            today=date(2026, 7, 19),
+        )
+
+        assert _events_json(own_data_dir, "crf")["event_count"] == 1
+        assert not (own_data_dir / "partners" / "coastal_roots_farm").exists()
+
+    def test_consolidated_partners_json_matches_events_urls_project_wrote(self, tmp_path):
+        from partner_scrape.partners.consolidate import consolidate
+        from tests.roster_seed import seed_roster_file
+
+        log_dir = tmp_path / "partner_log"
+        own_data_dir = _own_data_dir(tmp_path)
+        seed_roster_file(PARTNERS_PATH, own_data_dir)
+
+        project(log_dir=log_dir, own_data_dir=own_data_dir, today=date(2026, 7, 19))
+        consolidate(LocalStore(own_data_dir))
+
         partners = {p["name"]: p for p in _partners_json(own_data_dir)["partners"]}
         farm = partners["Coastal Roots Farm"]
-        # Full curated record survives (every field from fixtures/partners.json).
         assert farm["id"] == 101
-        assert farm["organization_type"] == "Afterschool/Out-of-School Time"
-        assert farm["location"] == "Encinitas, California"
-        assert farm["website"] == "https://example.org/coastal-roots-farm"
-        # Reference paths point at this partner's own files, resolvable
-        # relative to own_data_dir.
         assert farm["slug"] == "coastal_roots_farm"
-        assert farm["events_url"] == "partners/coastal_roots_farm/events.json"
-        assert farm["past_events_url"] == "partners/coastal_roots_farm/past-events.json"
-        resolved = (own_data_dir / farm["events_url"]).resolve()
-        assert resolved == (own_data_dir / "partners" / "coastal_roots_farm" / "events.json").resolve()
-        assert resolved.exists()
+        assert (own_data_dir / farm["events_url"]).exists()
+        assert (own_data_dir / farm["past_events_url"]).exists()
 
 
 class TestPublishedEventFieldSet:
@@ -371,24 +395,6 @@ class TestPublishedEventFieldSet:
 
 
 class TestSelfDescribing:
-    def test_partners_json_carries_generation_metadata(self, tmp_path):
-        log_dir = tmp_path / "partner_log"
-        site_dir = _site_dir(tmp_path)
-        own_data_dir = _own_data_dir(tmp_path)
-
-        project(
-            site_dir=site_dir,
-            log_dir=log_dir,
-            partners_path=PARTNERS_PATH,
-            own_data_dir=own_data_dir,
-            today=date(2026, 7, 19),
-        )
-
-        payload = _partners_json(own_data_dir)
-        assert "generated_at" in payload
-        assert payload["partner_count"] == 3
-        assert isinstance(payload["partners"], list)
-
     def test_event_files_are_self_describing_without_partners_json_context(self, tmp_path):
         log_dir = tmp_path / "partner_log"
         site_dir = _site_dir(tmp_path)
@@ -486,7 +492,7 @@ class TestLegacyExportUnaffected:
         assert before_meta == after_meta
         # And the new tree was written alongside it, additively, in the
         # same own_data_dir.
-        assert (own_data_dir / "partners.json").exists()
+        assert (own_data_dir / "partners" / "coastal_roots_farm" / "events.json").exists()
 
 
 class TestLegacyLogLineTolerance:
@@ -636,27 +642,17 @@ class TestPartnersPathErrors:
         )
 
         assert summary["partner_count"] == 3
-        assert (own_data_dir / "partners.json").exists()
+        assert (own_data_dir / "partners" / "coastal_roots_farm" / "events.json").exists()
 
-    def test_missing_site_dir_raises_via_the_default_partners_path_when_partners_path_omitted(
-        self, tmp_path, monkeypatch
-    ):
-        """When `partners_path` is *not* given explicitly, it defaults
-        to `{site_dir}/src/data/partners.json` -- a missing `site_dir`
-        still surfaces as a clear error in that case, just via the
-        partners-read failure rather than a `site_dir`-existence guard."""
-        missing_site_dir = tmp_path / "does-not-exist"
+    def test_empty_data_store_raises_when_partners_path_omitted(self, tmp_path):
+        """`partners_path` defaults to the partner records in
+        `own_data_dir`; an empty roster is a loud failure, not a silent
+        zero-partner publish."""
         own_data_dir = _own_data_dir(tmp_path)
         log_dir = tmp_path / "partner_log"
-        monkeypatch.setattr(publish, "get_site_dir", lambda: missing_site_dir)
 
-        with pytest.raises(RuntimeError, match="partners"):
-            project(
-                site_dir=missing_site_dir,
-                log_dir=log_dir,
-                own_data_dir=own_data_dir,
-                today=date(2026, 7, 19),
-            )
+        with pytest.raises(RuntimeError, match="No partner records"):
+            project(log_dir=log_dir, own_data_dir=own_data_dir, today=date(2026, 7, 19))
 
 
 class TestOwnDataDirErrors:
@@ -686,15 +682,11 @@ class TestOwnDataDirErrors:
 
 
 class TestConfigDefaults:
-    def test_omitted_site_dir_still_succeeds_when_partners_path_is_explicit(self, tmp_path, monkeypatch):
-        """`site_dir` no longer has to resolve to anything meaningful
-        when `partners_path` is given explicitly -- omitting it (so it
-        resolves via `config.get_site_dir()`) must not error or affect
-        where `project()` writes."""
-        fake_site_dir = _site_dir(tmp_path)
+    def test_omitted_site_dir_still_succeeds_when_partners_path_is_explicit(self, tmp_path):
+        """`site_dir` is unused since sprint 042: omitting it must not
+        error or affect where `project()` writes."""
         own_data_dir = _own_data_dir(tmp_path)
         log_dir = tmp_path / "partner_log"
-        monkeypatch.setattr(publish, "get_site_dir", lambda: fake_site_dir)
 
         project(
             log_dir=log_dir,
@@ -703,63 +695,43 @@ class TestConfigDefaults:
             today=date(2026, 7, 19),
         )
 
-        assert (own_data_dir / "partners.json").exists()
+        assert (own_data_dir / "partners" / "coastal_roots_farm" / "events.json").exists()
 
-    def test_omitted_log_dir_resolves_via_config_get_scrape_cache_store(self, tmp_path, monkeypatch):
-        fake_cache_dir = tmp_path / "cache"
-        site_dir = _site_dir(tmp_path)
+    def test_omitted_log_dir_resolves_via_config_get_history_store(self, tmp_path, monkeypatch):
+        fake_history_dir = tmp_path / "hist"
         own_data_dir = _own_data_dir(tmp_path)
         monkeypatch.setattr(
-            partner_log, "get_scrape_cache_store", lambda: LocalStore(fake_cache_dir)
+            partner_log, "get_history_store", lambda: LocalStore(fake_history_dir)
         )
+        partner_log.record([_opportunity()], partners_path=PARTNERS_PATH)
 
-        # No log written under fake_cache_dir/partner_log -- every
-        # partner should still publish with empty event lists rather
-        # than raising.
+        # The log written under history/partner_log is what project() reads.
         project(
-            site_dir=site_dir,
             partners_path=PARTNERS_PATH,
             own_data_dir=own_data_dir,
             today=date(2026, 7, 19),
         )
 
-        assert (own_data_dir / "partners.json").exists()
+        assert _events_json(own_data_dir, "coastal_roots_farm")["event_count"] == 1
 
-    def test_omitted_partners_path_resolves_via_config_get_site_dir(self, tmp_path, monkeypatch):
-        fake_site_dir = _site_dir(tmp_path)
+    def test_omitted_partners_path_reads_records_from_own_data_dir(self, tmp_path):
+        from tests.roster_seed import seed_roster
+
         own_data_dir = _own_data_dir(tmp_path)
-        (fake_site_dir / "src" / "data").mkdir(parents=True)
-        (fake_site_dir / "src" / "data" / "partners.json").write_text(
-            json.dumps([{"id": 101, "name": "Coastal Roots Farm"}])
-        )
-        monkeypatch.setattr(publish, "get_site_dir", lambda: fake_site_dir)
+        seed_roster([{"id": 101, "name": "Coastal Roots Farm"}], own_data_dir)
         log_dir = tmp_path / "partner_log"
 
-        project(
-            site_dir=fake_site_dir,
-            log_dir=log_dir,
-            own_data_dir=own_data_dir,
-            today=date(2026, 7, 19),
-        )
+        summary = project(log_dir=log_dir, own_data_dir=own_data_dir, today=date(2026, 7, 19))
 
-        partners = _partners_json(own_data_dir)["partners"]
-        assert partners == [
-            {
-                "id": 101,
-                "name": "Coastal Roots Farm",
-                "slug": "coastal_roots_farm",
-                "events_url": "partners/coastal_roots_farm/events.json",
-                "past_events_url": "partners/coastal_roots_farm/past-events.json",
-            }
-        ]
+        assert summary["partner_count"] == 1
+        assert (own_data_dir / "partners" / "coastal_roots_farm" / "events.json").exists()
 
     def test_omitted_own_data_dir_resolves_via_config_get_data_store(self, tmp_path, monkeypatch):
-        """New in sprint 025 ticket 007: `project()`'s `own_data_dir`
-        parameter defaults to `config.get_data_store()`, matching
-        every other export function's convention -- this overrides the
-        file's autouse `_own_data_dir_default` pin with its own fake
-        path to prove the default resolution itself, not just that it's
-        harmless."""
+        """`project()`'s `own_data_dir` parameter defaults to
+        `config.get_data_store()`, matching every other export function's
+        convention -- this overrides the file's autouse
+        `_own_data_dir_default` pin with its own fake path to prove the
+        default resolution itself."""
         fake_own_data_dir = tmp_path / "own-data-via-config"
         site_dir = _site_dir(tmp_path)
         log_dir = tmp_path / "partner_log"
@@ -767,4 +739,4 @@ class TestConfigDefaults:
 
         project(site_dir=site_dir, log_dir=log_dir, partners_path=PARTNERS_PATH, today=date(2026, 7, 19))
 
-        assert (fake_own_data_dir / "partners.json").exists()
+        assert (fake_own_data_dir / "partners" / "coastal_roots_farm" / "events.json").exists()

@@ -19,6 +19,7 @@ import json
 import re
 from pathlib import Path
 
+from tests.roster_seed import seed_roster
 from partner_scrape.directory.model import VALID_CLUB_TYPES
 from partner_scrape.directory.pipeline import DEFAULT_GEO_DATA_DIR, run_directory
 from partner_scrape.directory.sources.base import run_club_source
@@ -47,10 +48,9 @@ def _write_real_partners_fixture(site_dir: Path) -> None:
     ids = {int(m) for m in re.findall(r"related_partner_id\s*=\s*(\d+)", places_text)}
     ids |= {int(m) for m in re.findall(r"related_partner_id\s*=\s*(\d+)", offerings_text)}
     ids = sorted(ids)
-    data_dir = site_dir / "src" / "data"
-    data_dir.mkdir(parents=True, exist_ok=True)
+    site_dir.mkdir(parents=True, exist_ok=True)
     partners = [{"id": pid, "name": f"Fixture Partner {pid}"} for pid in ids]
-    (data_dir / "partners.json").write_text(json.dumps(partners), encoding="utf-8")
+    seed_roster(partners)
 
 DIRECTORY_REGISTRY_DIR = (
     Path(__file__).resolve().parents[2] / "partner_scrape" / "directory" / "registry"

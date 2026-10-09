@@ -49,3 +49,23 @@ raises before any write. `published_entry` / `build_envelope` are shared
 with `export/publish.project` so both produce one envelope shape.
 CLI: `partners get|put|add|consolidate`; `put`/`add` validate then go
 through `PartnerWriter` with `--by` (default `person:$USER`).
+
+## Scraper readers (ticket 042-004)
+
+The scraper no longer reads `$SITE_DIR/src/data/partners.json`. Every reader
+goes through `source.resolve_partners(source=None)`: `None` = the records in
+the configured data store (`PARTNER_SCRAPE_DATA_DIR`, local dir or `s3://`);
+also accepts a `Store`, a list, or a roster/envelope JSON file (offline
+override, tests). An empty roster fails loudly. Switched: `pipeline.run`
+(resolves once, hands the list to `validate_roster`, `normalize.run`,
+`partner_log.record`), `normalize.partners.load_partners`, `normalize.run`,
+`export/partner_log`, `export/publish.project` (default roster = records in
+`own_data_dir`), `directory.pipeline._check_related_partner_references`,
+`cli` scrape. `publish.project` no longer writes `partners.json`; the `scrape`
+CLI calls `consolidate(get_data_store())` right after it (failure logged,
+exit 1, like `project`). `--site-dir`/`SITE_DIR` are accepted but unused.
+`export/partner_log` moved from `cache/partner_log` to the history store
+prefix `partner_log/` (`history/partner_log` in the bucket); copying old
+objects is ticket 005. Published event files use the record's stored slug;
+the accumulated log is still keyed by `slugify(name)`.
+The image does not bake the roster. Local runs: README "Running locally".
