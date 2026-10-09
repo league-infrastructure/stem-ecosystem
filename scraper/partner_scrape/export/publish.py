@@ -75,6 +75,7 @@ from partner_scrape.config import get_site_dir, resolve_data_store
 from partner_scrape.export.partner_log import _JSONL_FILENAME, resolve_log_store
 from partner_scrape.export.writer import SITE_SCHEMA_FIELDS, is_current_or_upcoming, to_json_dict
 from partner_scrape.model import slugify
+from partner_scrape.partners.consolidate import build_envelope, published_entry
 from partner_scrape.normalize.run import Opportunity
 from partner_scrape.storage import Store
 
@@ -310,11 +311,7 @@ def project(
             _events_payload("past", partner_slug, past),
         )
 
-        published_partner = dict(partner)
-        published_partner["slug"] = partner_slug
-        published_partner["events_url"] = f"partners/{partner_slug}/events.json"
-        published_partner["past_events_url"] = f"partners/{partner_slug}/past-events.json"
-        published_partners.append(published_partner)
+        published_partners.append(published_entry(partner, partner_slug))
 
     summary = {
         "partner_count": len(published_partners),
@@ -325,11 +322,7 @@ def project(
     if dry_run:
         return summary
 
-    partners_payload = {
-        "generated_at": _now_iso(),
-        "partner_count": len(published_partners),
-        "partners": published_partners,
-    }
+    partners_payload = build_envelope(published_partners, _now_iso())
 
     store = resolve_data_store(own_data_dir)
     try:

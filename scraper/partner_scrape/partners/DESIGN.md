@@ -40,3 +40,12 @@ assert the ACLs with a fake S3 client.
 - Same-second archives get a `-2`, `-3` suffix instead of overwriting.
 - Changing a logo's extension archives the old logo and deletes it from `data/`.
 - `changes.jsonl` is appended by read-modify-write; writers are serial.
+
+## consolidate.py and the `partners` CLI (ticket 042-003)
+
+`consolidate(store)` loads and validates every record (`validate_records`
+names offending slugs) and only then writes `partners.json`; a bad record
+raises before any write. `published_entry` / `build_envelope` are shared
+with `export/publish.project` so both produce one envelope shape.
+CLI: `partners get|put|add|consolidate`; `put`/`add` validate then go
+through `PartnerWriter` with `--by` (default `person:$USER`).
