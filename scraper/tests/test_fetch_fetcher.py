@@ -1,6 +1,6 @@
 """`UrllibFetcher`'s transport-layer behavior.
 
-Every test here drives `UrllibFetcher.get` with `urllib.request.urlopen`
+Every test here drives `UrllibFetcher.get` with `fetcher._urlopen`
 monkeypatched, so no socket is ever opened -- matching the no-network
 rule the rest of `tests/` follows.
 """
@@ -62,7 +62,7 @@ def test_transport_failures_become_a_status_not_an_exception(monkeypatch, raised
     def boom(*args, **kwargs):
         raise raised
 
-    monkeypatch.setattr("urllib.request.urlopen", boom)
+    monkeypatch.setattr("partner_scrape.fetch.fetcher._urlopen", boom)
 
     response = UrllibFetcher().get("https://example.org/events")
 
@@ -79,13 +79,13 @@ def test_http_error_still_reports_its_own_status(monkeypatch):
             url="https://example.org/", code=403, msg="Forbidden", hdrs=None, fp=None
         )
 
-    monkeypatch.setattr("urllib.request.urlopen", forbidden)
+    monkeypatch.setattr("partner_scrape.fetch.fetcher._urlopen", forbidden)
 
     assert UrllibFetcher().get("https://example.org/").status == 403
 
 
 def test_success_path_is_unchanged(monkeypatch):
-    monkeypatch.setattr("urllib.request.urlopen", lambda *a, **k: _FakeResponse())
+    monkeypatch.setattr("partner_scrape.fetch.fetcher._urlopen", lambda *a, **k: _FakeResponse())
 
     response = UrllibFetcher().get("https://example.org/")
 
@@ -106,7 +106,7 @@ def test_request_is_verified_against_certifi(monkeypatch):
         seen["context"] = context
         return _FakeResponse()
 
-    monkeypatch.setattr("urllib.request.urlopen", capture)
+    monkeypatch.setattr("partner_scrape.fetch.fetcher._urlopen", capture)
     UrllibFetcher().get("https://example.org/")
 
     assert isinstance(seen["context"], ssl.SSLContext)
@@ -122,7 +122,7 @@ def test_urls_with_spaces_are_encoded_before_the_request(monkeypatch):
         seen["url"] = request.full_url
         return _FakeResponse()
 
-    monkeypatch.setattr("urllib.request.urlopen", capture)
+    monkeypatch.setattr("partner_scrape.fetch.fetcher._urlopen", capture)
     messy = "https://example.org/docs/Column_ Deborah publishes a book.pdf"
 
     response = UrllibFetcher().get(messy)
@@ -166,7 +166,7 @@ class TestPost:
             seen["headers"] = dict(request.header_items())
             return _FakeResponse()
 
-        monkeypatch.setattr("urllib.request.urlopen", capture)
+        monkeypatch.setattr("partner_scrape.fetch.fetcher._urlopen", capture)
 
         UrllibFetcher().post("https://example.org/wday/cxs/acme/careers/jobs", body={"offset": 0})
 
@@ -182,7 +182,7 @@ class TestPost:
             seen["headers"] = dict(request.header_items())
             return _FakeResponse()
 
-        monkeypatch.setattr("urllib.request.urlopen", capture)
+        monkeypatch.setattr("partner_scrape.fetch.fetcher._urlopen", capture)
 
         UrllibFetcher().post(
             "https://example.org/wday/cxs/acme/careers/jobs",
@@ -194,7 +194,7 @@ class TestPost:
         assert seen["headers"]["Accept"] == "application/json"
 
     def test_success_path_returns_status_and_body(self, monkeypatch):
-        monkeypatch.setattr("urllib.request.urlopen", lambda *a, **k: _FakeResponse())
+        monkeypatch.setattr("partner_scrape.fetch.fetcher._urlopen", lambda *a, **k: _FakeResponse())
 
         response = UrllibFetcher().post("https://example.org/jobs", body={"offset": 0})
 
@@ -223,7 +223,7 @@ class TestPost:
         def boom(*args, **kwargs):
             raise raised
 
-        monkeypatch.setattr("urllib.request.urlopen", boom)
+        monkeypatch.setattr("partner_scrape.fetch.fetcher._urlopen", boom)
 
         response = UrllibFetcher().post("https://example.org/jobs", body={"offset": 0})
 
@@ -237,7 +237,7 @@ class TestPost:
                 url="https://example.org/jobs", code=403, msg="Forbidden", hdrs=None, fp=None
             )
 
-        monkeypatch.setattr("urllib.request.urlopen", forbidden)
+        monkeypatch.setattr("partner_scrape.fetch.fetcher._urlopen", forbidden)
 
         response = UrllibFetcher().post("https://example.org/jobs", body={"offset": 0})
 
@@ -250,7 +250,7 @@ class TestPost:
             seen["url"] = request.full_url
             return _FakeResponse()
 
-        monkeypatch.setattr("urllib.request.urlopen", capture)
+        monkeypatch.setattr("partner_scrape.fetch.fetcher._urlopen", capture)
         messy = "https://example.org/wday/cxs/acme/careers/jobs?q=a b"
 
         response = UrllibFetcher().post(messy, body={"offset": 0})

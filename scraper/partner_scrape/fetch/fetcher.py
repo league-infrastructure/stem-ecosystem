@@ -17,6 +17,7 @@ import http.client
 import json
 import logging
 import ssl
+import threading
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -86,6 +87,54 @@ def sanitize_url(url: str) -> str:
     )
 
 
+def is_notable_redirect(requested: str, final: str) -> bool:
+    """True when ``final`` is on a different site than ``requested``.
+
+    "Different site" means the host differs after ignoring a leading
+    ``www.`` (and case). An http->https upgrade, a www-only change, a
+    path change, or no redirect at all are routine and not notable.
+    """
+
+    def host(url: str) -> str:
+        try:
+            name = (urllib.parse.urlsplit(url).hostname or "").lower()
+        except ValueError:
+            return ""
+        return name[4:] if name.startswith("www.") else name
+
+    requested_host, final_host = host(requested), host(final)
+    if not requested_host or not final_host:
+        return False
+    return requested_host != final_host
+
+
+#: Per-thread list the redirect handler appends ``[status, url]`` hops to
+#: while a fetch is in flight (``None`` when no fetch is recording).
+_redirect_state = threading.local()
+
+
+class _RecordingRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Follows redirects exactly as the default handler does, additionally
+    recording each hop as ``[status, target_url]`` on the active fetch."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        chain = getattr(_redirect_state, "chain", None)
+        if chain is not None:
+            chain.append([code, newurl])
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+def _urlopen(request, timeout=None, context=None):
+    """``urlopen`` equivalent whose redirects are recorded (see above).
+
+    A module-level seam (tests substitute it) so no socket is opened.
+    """
+    opener = urllib.request.build_opener(
+        _RecordingRedirectHandler, urllib.request.HTTPSHandler(context=context)
+    )
+    return opener.open(request, timeout=timeout)
+
+
 @dataclass
 class FetchResponse:
     """One raw HTTP response, exactly as retrieved (or replayed from cache).
@@ -101,6 +150,15 @@ class FetchResponse:
     headers: dict[str, str]
     body: str
     fetched_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    #: URL the body actually came from after following redirects; ``""``
+    #: (the default) means "same as ``url``" -- resolved in ``__post_init__``.
+    final_url: str = ""
+    #: Each redirect hop followed, as ``[status, url]`` (target of the hop).
+    redirect_chain: list[list] = field(default_factory=list)
+
+    def __post_init__(self) -> None:
+        if not self.final_url:
+            self.final_url = self.url
 
 
 class Fetcher(Protocol):
@@ -174,16 +232,24 @@ class UrllibFetcher:
         applied to ``request``'s own target, matching ``get()``'s
         pre-existing behavior.
         """
+        chain: list[list] = []
+        _redirect_state.chain = chain
         try:
-            with urllib.request.urlopen(
+            with _urlopen(
                 request, timeout=self.timeout, context=_ssl_context()
             ) as response:
                 body = response.read().decode("utf-8", errors="replace")
+                geturl = getattr(response, "geturl", None)
+                final_url = url
+                if chain:
+                    final_url = (geturl() if callable(geturl) else None) or chain[-1][1]
                 return FetchResponse(
                     url=url,
                     status=response.status,
                     headers=dict(response.headers.items()),
                     body=body,
+                    final_url=final_url,
+                    redirect_chain=chain,
                 )
         except urllib.error.HTTPError as exc:
             # A 304 (and other non-2xx) arrive as HTTPError from
@@ -191,7 +257,14 @@ class UrllibFetcher:
             # shape a 2xx gets, so callers never need a try/except.
             body = exc.read().decode("utf-8", errors="replace") if exc.fp else ""
             headers = dict(exc.headers.items()) if exc.headers else {}
-            return FetchResponse(url=url, status=exc.code, headers=headers, body=body)
+            return FetchResponse(
+                url=url,
+                status=exc.code,
+                headers=headers,
+                body=body,
+                final_url=chain[-1][1] if chain else url,
+                redirect_chain=chain,
+            )
         except (OSError, http.client.HTTPException, UnicodeError) as exc:
             # No HTTP response ever arrived: DNS failure, TLS failure,
             # read timeout, reset connection, malformed URL. Raising
@@ -215,3 +288,5 @@ class UrllibFetcher:
             return FetchResponse(
                 url=url, status=TRANSPORT_ERROR_STATUS, headers={}, body=""
             )
+        finally:
+            _redirect_state.chain = None

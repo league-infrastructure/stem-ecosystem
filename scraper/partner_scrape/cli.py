@@ -50,6 +50,7 @@ from partner_scrape.enrich.cache import EnrichmentCache
 from partner_scrape.enrich.enricher import LLMEnricher
 from partner_scrape.enrich.llm_client import AnthropicLLMClient
 from partner_scrape.fetch import PoliteFetcher
+from partner_scrape.fetch.headless import PlaywrightFetcher
 from partner_scrape.observability.render import render_text
 from partner_scrape.observability.reporter import YieldReporter
 from partner_scrape.observability.snapshot import (
@@ -745,6 +746,12 @@ def main(argv: list[str] | None = None) -> int:
         previous_snapshot = load_snapshot(yield_history_store, yield_history_key)
         yield_reporter = YieldReporter()
 
+    # Sprint 043 (issue 73): collect notable redirects from both the
+    # plain and headless fetchers so the run output (and thus run logs)
+    # lists sites that moved.
+    from partner_scrape.fetch.redirects import RedirectLog
+
+    redirect_log = RedirectLog()
     payload = run(
         registry_dir=args.registry_dir,
         site_dir=args.site_dir,
@@ -753,6 +760,10 @@ def main(argv: list[str] | None = None) -> int:
         dry_run=args.dry_run,
         enrichers=enrichers,
         reporter=yield_reporter,
+        fetcher=PoliteFetcher(redirect_log=redirect_log),
+        headless_fetcher_factory=lambda: PoliteFetcher(
+            fetcher=PlaywrightFetcher(), redirect_log=redirect_log
+        ),
     )
 
     # Sprint 009 ticket 004: project every partner's accumulated
@@ -812,6 +823,9 @@ def main(argv: list[str] | None = None) -> int:
     noun = "opportunity" if len(payload) == 1 else "opportunities"
     suffix = " (dry run -- nothing written)" if args.dry_run else ""
     print(f"partner-scrape: wrote {len(payload)} {noun}{suffix}.")
+
+    for line in redirect_log.lines():
+        print(line)
 
     if yield_reporter is not None:
         report = yield_reporter.report(previous_snapshot)

@@ -138,6 +138,9 @@ class TestArgumentWiring:
         assert exit_code == 0
         enrichers = captured.pop("enrichers")
         reporter = captured.pop("reporter")
+        # Sprint 043: redirect-collecting fetchers are always supplied.
+        assert captured.pop("fetcher").redirect_log is not None
+        assert callable(captured.pop("headless_fetcher_factory"))
         assert captured == {
             "registry_dir": None,
             "site_dir": None,
