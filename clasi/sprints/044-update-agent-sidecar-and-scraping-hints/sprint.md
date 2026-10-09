@@ -64,6 +64,11 @@ pytest in `scraper/tests/`. LLM clients are Protocol-typed with scripted fakes; 
 
 New packages `partner_scrape/hints/` (shared model, validation, store, writer, consumption helpers) and `partner_scrape/sidecar/` (service). Dependency direction: sidecar and scraper jobs depend on hints; hints depends on storage and partners. Sidecar deps live in an optional `sidecar` extra so the scraper image does not grow.
 
+## Follow-ups
+
+- Auto-created generic event source for partners with events/camps/programs page hints (deferred; approved by Eric, 2026-10-09).
+- Scraper consumption of hints for non-partner entities.
+
 ## GitHub Issues
 
 None.

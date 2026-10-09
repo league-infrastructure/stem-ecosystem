@@ -1,5 +1,15 @@
 ---
-status: pending
+status: in-progress
+sprint: '044'
+tickets:
+- 044-001
+- 044-002
+- 044-003
+- 044-004
+- 044-005
+- 044-006
+- 044-007
+- 044-008
 ---
 
 # Update-agent sidecar: a chat that produces scraping hints
