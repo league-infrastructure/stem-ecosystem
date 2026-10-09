@@ -1,5 +1,6 @@
 ---
 import BaseLayout from '../../layouts/BaseLayout.astro';
+import UpdateLink from '../../components/UpdateLink.astro';
 import OpportunityCard from '../../components/OpportunityCard.astro';
 import SocialIcon from '../../components/SocialIcon.astro';
 import { getLogoPath } from '../../lib/helpers';
@@ -50,6 +51,7 @@ const socialEntries = [
     <div class="detail-body">
       <div class="detail-content">
         <p>{partner.description}</p>
+        <UpdateLink type="partner" slug={partner.slug} />
       </div>
 
       <aside class="detail-sidebar">

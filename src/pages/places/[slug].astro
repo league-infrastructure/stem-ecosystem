@@ -6,6 +6,7 @@
 // own docstring: "one field doubles as both id and slug", mirroring
 // Team.team_id's identical convention).
 import BaseLayout from '../../layouts/BaseLayout.astro';
+import UpdateLink from '../../components/UpdateLink.astro';
 import placesData from '../../data/places.json';
 
 export function getStaticPaths() {
@@ -74,6 +75,7 @@ const isOpen = place.status === 'open';
             <p>{place.status_note}</p>
           </div>
         )}
+        <UpdateLink type="place" slug={place.place_id} />
       </div>
 
       <aside class="detail-sidebar">

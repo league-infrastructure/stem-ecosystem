@@ -7,6 +7,7 @@
 // programs (ftc-1622 vs frc-1622 are different teams), so team_id is
 // already the collision-free slug this page needs.
 import BaseLayout from '../../layouts/BaseLayout.astro';
+import UpdateLink from '../../components/UpdateLink.astro';
 import teamsData from '../../data/teams.json';
 
 export function getStaticPaths() {
@@ -98,6 +99,7 @@ const siblingTeams = (team.sibling_team_ids as string[] | undefined)?.length
             </ul>
           </div>
         )}
+        <UpdateLink type="team" slug={team.team_id} />
       </div>
 
       <aside class="detail-sidebar">

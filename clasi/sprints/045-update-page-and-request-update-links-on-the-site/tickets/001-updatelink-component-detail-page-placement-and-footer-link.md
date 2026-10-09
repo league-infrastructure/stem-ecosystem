@@ -1,8 +1,10 @@
 ---
 id: '001'
 title: UpdateLink component, detail-page placement and footer link
-status: open
-use-cases: [SUC-001, SUC-002]
+status: in-progress
+use-cases:
+- SUC-001
+- SUC-002
 depends-on: []
 github-issue: ''
 issue: 84-update-page-and-request-update-links-on-the-site.md
