@@ -73,8 +73,11 @@ never change; URL/email/phone shape; `validate_records([candidate])`.
 
 **Auto-apply** (field-aware, after the gates):
 - fill an EMPTY phone / email / social field;
-- replace a social link with one on the same network's domain (covers dead-link
-  replacement);
+- replace a NON-EMPTY social link with a same-network link only when the current
+  value is on the wrong network's domain, or the link checker reported it dead
+  (404/410/exception; `Flag.dead` on `social_changed`/`social_dead`, so the
+  policy does no network I/O). Without a link checker (`--no-llm`) the dead
+  condition cannot fire (043-011);
 - website: only with a `website_moved` flag, proposed host == the snapshot's
   home `final_url` host (www ignored), and host not in `STAGING_HOSTS`
   (suffix match: multiscreensite.com, wixsite.com, squarespace.com,
@@ -86,7 +89,12 @@ never change; URL/email/phone shape; `validate_records([candidate])`.
 **Needs review** (`needs_review`: `{field, current, proposed, reason}`, never
 applied): changing an existing non-empty email/phone; name/description/location
 without rebrand evidence; a website not backed by the redirect or on a staging
-host; a cross-network social value; `logo_src`; any other field.
+host; a cross-network social value; replacing a live, correct-network social link; `logo_src`; any other field.
+
+Why (043-011): the second real dry run would have replaced working local
+social links with the national/parent accounts linked in the page footer
+(challenge_island_san_diego_coastal, brain_balance_of_san_diego, aops,
+citizen_schools, encorps). Only dead or wrong-network links are replaced.
 
 Why: the first real `updates --dry-run` (2026-10-09, 211 partners) found 106
 partners with approvable changes, and the old allowlist-only rule would have

@@ -11,8 +11,10 @@ organization_type); URL/email/phone shape; the record validator.
 
 AUTO-APPLY, after the gates:
 - fill an EMPTY phone / email / social field;
-- replace a social link with a link on the same network's domain (this
-  includes dead-link replacement);
+- replace a NON-EMPTY social link with a same-network link ONLY when the
+  current value is on the wrong network's domain, or the link checker reported
+  it dead (404/410/exception; ticket 043-011). A live, correct-network link is
+  never replaced (the page footer often links the national/parent account);
 - website: only with a ``website_moved`` flag, proposed host == the snapshot's
   home ``final_url`` host, and the host not a site-builder/staging host;
 - name, description, location: only with a HIGH ``website_moved`` flag
@@ -105,6 +107,26 @@ def _flag(f: Any, key: str) -> str:
     return str(getattr(v, "label", v) or "")
 
 
+def _on_network(name: str, url: str) -> bool:
+    host = _host(url)
+    return any(host == d or host.endswith("." + d) for d in _SOCIAL_HOSTS[name])
+
+
+def _link_dead(name: str, flags) -> bool:
+    """True when this run's link check flagged the current ``name`` link dead.
+
+    Derived from the flags (``Flag.dead``); with no link checker (``--no-llm``
+    or none supplied) no flag carries it, so this is False.
+    """
+    for f in flags:
+        if _flag(f, "field") != name or _flag(f, "kind") not in ("social_dead", "social_changed"):
+            continue
+        d = f.get("dead") if isinstance(f, dict) else getattr(f, "dead", False)
+        if d:
+            return True
+    return False
+
+
 def _field_rule(name, value, record, flags, snapshot) -> str | None:
     """None when auto-apply is allowed, else the needs-review reason."""
     current = (record.get(name) or "").strip()
@@ -115,7 +137,10 @@ def _field_rule(name, value, record, flags, snapshot) -> str | None:
         host = _host(value)
         if not any(host == d or host.endswith("." + d) for d in _SOCIAL_HOSTS[name]):
             return f"host {host!r} is not a {name} domain"
-        return None
+        if not current or not _on_network(name, current) or _link_dead(name, flags):
+            return None
+        return (f"existing {name} link {current!r} is on the right network and not "
+                "reported dead; the site's link may be a national/parent account")
     if name == "website":
         if not moved:
             return "no website_moved flag"

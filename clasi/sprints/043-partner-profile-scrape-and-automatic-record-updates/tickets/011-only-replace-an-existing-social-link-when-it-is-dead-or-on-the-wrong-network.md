@@ -1,12 +1,12 @@
 ---
 id: '011'
 title: Only replace an existing social link when it is dead or on the wrong network
-status: open
+status: done
 use-cases:
 - SUC-003
 - SUC-004
 depends-on:
-- "010"
+- '010'
 github-issue: ''
 issue: 75-post-scrape-partner-record-update-check-with-haiku.md
 completes_issue: false
@@ -34,14 +34,14 @@ Otherwise the change goes to `needs_review` with a reason. Filling an EMPTY soci
 
 ## Acceptance Criteria
 
-- [ ] Non-empty social replacement auto-applies only when the current value is on the wrong network's domain, or the link checker reports it dead (404/410/exception).
-- [ ] Otherwise it is reported as needs_review with a clear reason, in stdout and JSON reports.
-- [ ] Filling an empty social field still auto-applies.
-- [ ] agua_hedionda and aquillius cases (wrong-network current value) still apply.
-- [ ] challenge_island_san_diego_coastal, brain_balance_of_san_diego, aops, citizen_schools, and encorps cases are needs_review when the current link is live.
-- [ ] A dead current link (404, 410, or exception) allows replacement with the site's same-network link.
-- [ ] With no link checker available (`--no-llm` mode), the dead-link condition cannot fire and such changes are needs_review.
-- [ ] Other 010 rules, cap of 20, and gates are unchanged; DESIGN.md updated with the rationale.
+- [x] Non-empty social replacement auto-applies only when the current value is on the wrong network's domain, or the link checker reports it dead (404/410/exception).
+- [x] Otherwise it is reported as needs_review with a clear reason, in stdout and JSON reports.
+- [x] Filling an empty social field still auto-applies.
+- [x] agua_hedionda and aquillius cases (wrong-network current value) still apply.
+- [x] challenge_island_san_diego_coastal, brain_balance_of_san_diego, aops, citizen_schools, and encorps cases are needs_review when the current link is live.
+- [x] A dead current link (404, 410, or exception) allows replacement with the site's same-network link.
+- [x] With no link checker available (`--no-llm` mode), the dead-link condition cannot fire and such changes are needs_review.
+- [x] Other 010 rules, cap of 20, and gates are unchanged; DESIGN.md updated with the rationale.
 
 ## Implementation Plan
 
