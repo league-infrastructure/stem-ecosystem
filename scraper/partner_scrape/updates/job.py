@@ -12,7 +12,7 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Any, Callable
 
 from partner_scrape.partners.consolidate import consolidate
@@ -27,6 +27,7 @@ from partner_scrape.updates.checks import (
 )
 from partner_scrape.updates.policy import PolicyResult, apply_policy
 from partner_scrape.updates.proposer import Proposal, Proposer, propose_for_partner
+from partner_scrape.updates.quality import QualityReport, run_quality
 
 log = logging.getLogger(__name__)
 
@@ -75,6 +76,7 @@ class UpdatesReport:
     outcomes: list[PartnerOutcome] = field(default_factory=list)
     check_lines: list[str] = field(default_factory=list)
     redirect_lines: list[str] = field(default_factory=list)
+    quality: QualityReport | None = None
     consolidated: bool = False
     state_saved: bool = False
     report_key: str = ""
@@ -108,6 +110,8 @@ class UpdatesReport:
                            f"{len(o.policy.applied_fields) if o.policy else 0} field(s) pending")
             if o.status == "error":
                 out.append(f"ERROR {o.slug}: {o.error}")
+        if self.quality is not None:
+            out.extend(self.quality.lines())
         out.append(
             f"updates{' (dry-run)' if self.dry_run else ''}"
             f"{' (no-llm)' if self.no_llm else ''}: examined={len(self.outcomes)} "
@@ -123,6 +127,7 @@ class UpdatesReport:
             "no_llm": self.no_llm,
             "consolidated": self.consolidated,
             "partners": [o.to_dict() for o in self.outcomes],
+            "event_quality": self.quality.to_dict() if self.quality else None,
         }
 
 
@@ -153,6 +158,7 @@ def run_updates(
     slug: str | None = None,
     all_partners: bool = False,
     clock: Callable[[], str] = _stamp,
+    today: date | None = None,
 ) -> UpdatesReport:
     report = UpdatesReport(dry_run=dry_run, no_llm=no_llm)
     check = run_checks(
@@ -210,6 +216,12 @@ def run_updates(
     elif not dry_run:
         save_state(cache_store, new_state)
         report.state_saved = True
+
+    # Report-only event-quality checks: read the data store, never write it.
+    try:
+        report.quality = run_quality(roster, data_store, today=today, slug=slug)
+    except Exception as exc:  # noqa: BLE001 - a report section must not abort the run
+        log.warning("event-quality checks failed: %s", exc)
 
     ts = clock()
     report.report_key = f"{REPORT_PREFIX}/{ts}.json"

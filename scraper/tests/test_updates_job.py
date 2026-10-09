@@ -185,3 +185,19 @@ def test_cli_registers_updates_flags():
     assert (args.dry_run, args.no_llm, args.max_changes, args.slug, args.all) == (
         True, True, 3, "x", True)
     assert cli._build_parser().parse_args(["updates"]).max_changes == 20
+
+
+def test_event_quality_in_report_in_dry_and_real_runs(env):
+    env.data.write_json("partners/cmod/events.json", {"events": [
+        {"title": "Holiday Hours", "date_start": "2026-10-13T10:00:00", "link": "",
+         "description": "", "age_grade_level": [], "cost_range": "Free"}]})
+    keys = lambda: sorted(env.data.list(""))
+    before = {k: env.data.read_text(k) for k in keys()}
+    rep = env.run(FakeProposer({}), dry_run=True, today=__import__("datetime").date(2026, 10, 8))
+    assert {k: env.data.read_text(k) for k in keys()} == before
+    assert any(l.startswith("QUALITY cmod non_event") for l in rep.lines())
+    data = json.loads(env.history.read_text(rep.report_key))
+    assert data["event_quality"]["counts"]["non_event"] == 1
+    assert data["event_quality"]["partners"]["cmod"][0]["check"] == "non_event"
+    rep2 = env.run(FakeProposer({}), no_llm=True)
+    assert any(l.startswith("event-quality:") for l in rep2.lines())
