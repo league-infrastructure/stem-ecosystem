@@ -12,6 +12,7 @@ from urllib.parse import urljoin, urlparse
 
 from partner_scrape.fetch.fetcher import is_notable_redirect
 from partner_scrape.fetch.redirects import RedirectLog
+from partner_scrape.hints import HintStore, load_hints, page_hint_urls
 from partner_scrape.profiles.discover import discover_profile_pages
 from partner_scrape.profiles.extract import extract_facts
 from partner_scrape.profiles.snapshot import (
@@ -37,9 +38,11 @@ class ProfilesReport:
     written: int = 0
     unchanged: int = 0
     redirect_lines: list[str] = field(default_factory=list)
+    hint_lines: list[str] = field(default_factory=list)  # hints used, per partner
 
     def lines(self) -> list[str]:
         out = list(self.redirect_lines)
+        out.extend(self.hint_lines)
         for s in self.skipped:
             out.append(f"SKIPPED {s}: no website")
         out.extend(f"FAILED {e}" for e in self.errors)
@@ -48,6 +51,7 @@ class ProfilesReport:
             f"failed={self.failed} redirects={self.redirects} "
             f"skipped={len(self.skipped)} written={self.written} "
             f"unchanged={self.unchanged}"
+            + (f" hints_used={len(self.hint_lines)}" if self.hint_lines else "")
         )
         return out
 
@@ -90,8 +94,22 @@ def _sitemap_urls(fetcher, home_final: str, label: str) -> list[str]:
     return _LOC_RE.findall(resp.body or "")[:2000]
 
 
-def profile_partner(record: dict, fetcher, now: datetime | None = None) -> tuple[dict, int]:
-    """Build the snapshot for one record. Returns (snapshot, failed_page_count)."""
+PROFILE_ROLES = ("about", "contact", "other")
+
+
+def profile_partner(
+    record: dict,
+    fetcher,
+    now: datetime | None = None,
+    hints: list[dict] | None = None,
+    used: list[str] | None = None,
+) -> tuple[dict, int]:
+    """Build the snapshot for one record. Returns (snapshot, failed_page_count).
+
+    ``hints`` (page hints for about/contact/other) steer which URLs are
+    fetched; they never supply a fact. ``used`` collects a line per hint
+    actually applied. With no hints the behavior is unchanged.
+    """
     slug = record["slug"]
     website = _normalize_website(record.get("website"))
     pages: dict[str, dict] = {}
@@ -105,14 +123,23 @@ def profile_partner(record: dict, fetcher, now: datetime | None = None) -> tuple
     else:
         facts["home"] = extract_facts(home_body).to_dict()
         home_final = home["final_url"]
+        hinted = page_hint_urls(hints or [], website, PROFILE_ROLES)
+        h_about = (hinted.get("about") or [None])[0]
+        h_contact = (hinted.get("contact") or [None])[0]
         found = discover_profile_pages(home_final, home_body)
-        if not (found.about and found.contact):
+        if not ((found.about or h_about) and (found.contact or h_contact)):
             found = discover_profile_pages(
                 home_final, home_body, _sitemap_urls(fetcher, home_final, f"{slug}:sitemap")
             )
-        for kind, url in (("about", found.about), ("contact", found.contact)):
+        targets = [("about", h_about or found.about), ("contact", h_contact or found.contact)]
+        for n, url in enumerate(hinted.get("other") or [], start=1):
+            targets.append(("other" if n == 1 else f"other{n}", url))
+        hint_urls = {u for u in (h_about, h_contact, *(hinted.get("other") or [])) if u}
+        for kind, url in targets:
             if not url:
                 continue
+            if url in hint_urls and used is not None:
+                used.append(f"HINT {slug} page {kind}: {url}")
             entry, body = _fetch_page(fetcher, url, f"{slug}:{kind}")
             pages[kind] = entry
             if entry["error"]:
@@ -153,6 +180,7 @@ def run_profiles(
     slug: str | None = None,
     limit: int | None = None,
     redirect_log: RedirectLog | None = None,
+    hint_store: HintStore | None = None,
 ) -> ProfilesReport:
     """Run the job over ``roster`` (record dicts). The fetcher should have
     been built with ``redirect_log`` so home-page redirects are reported."""
@@ -171,7 +199,10 @@ def run_profiles(
             report.skipped.append(s)
             continue
         try:
-            snap, failed = profile_partner(rec, fetcher)
+            used: list[str] = []
+            snap, failed = profile_partner(
+                rec, fetcher, hints=load_hints(hint_store, s), used=used)
+            report.hint_lines.extend(used)
             result = write_snapshot_if_changed(history_store, s, snap)
         except Exception as exc:  # noqa: BLE001 - never abort the run
             report.failed += 1

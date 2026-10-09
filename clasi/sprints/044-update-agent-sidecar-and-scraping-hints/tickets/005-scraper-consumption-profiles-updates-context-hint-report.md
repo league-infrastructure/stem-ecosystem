@@ -1,9 +1,11 @@
 ---
 id: '005'
 title: 'Scraper consumption: profiles, updates context, hint report'
-status: open
-use-cases: [SUC-006]
-depends-on: ["001"]
+status: done
+use-cases:
+- SUC-006
+depends-on:
+- '001'
 github-issue: ''
 issue: 83-update-agent-sidecar-and-scraping-hints.md
 completes_issue: false
@@ -20,11 +22,11 @@ See architecture-update.md for the design and API contract.
 
 ## Acceptance Criteria
 
-- [ ] No hints file means identical behavior to today
-- [ ] Hints never set a record field directly
-- [ ] Updates report and profiles log show which hints were used
-- [ ] Tests for each path
-- [ ] Tests pass (`uv run pytest` from scraper/)
+- [x] No hints file means identical behavior to today
+- [x] Hints never set a record field directly
+- [x] Updates report and profiles log show which hints were used
+- [x] Tests for each path
+- [x] Tests pass (`uv run pytest` from scraper/)
 
 ## Implementation Plan
 
