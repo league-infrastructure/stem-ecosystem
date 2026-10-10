@@ -1,5 +1,8 @@
 ---
-status: pending
+status: in-progress
+sprint: '046'
+tickets:
+- 046-001
 ---
 
 # Update page: the chat scrolls on its own; hide "messages left"

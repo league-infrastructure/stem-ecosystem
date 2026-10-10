@@ -1,6 +1,12 @@
 ---
-status: pending
+status: in-progress
 related: clasi/issues/85-update-page-chat-scrolls-independently-hide-messages-left.md
+sprint: '046'
+tickets:
+- 046-002
+- 046-003
+- 046-004
+- 046-005
 ---
 
 # Page hints need a "focus", and the guard ends legitimate conversations
