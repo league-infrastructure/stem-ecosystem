@@ -1,6 +1,6 @@
 ---
-sprint: "046"
-status: draft
+sprint: '046'
+status: done
 ---
 
 # Architecture Update -- Sprint 046: Update page scrolling polish
