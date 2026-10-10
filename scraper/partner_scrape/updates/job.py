@@ -135,8 +135,11 @@ class UpdatesReport:
                 out.append(f"ERROR {o.slug}: {o.error}")
         for o in self.outcomes:
             out.extend(f"HINT {o.slug} {h['kind']}: "
-                       f"{h.get('text') or h.get('name') or h.get('website')}"
+                       f"{h.get('text') or h.get('name') or h.get('website') or h.get('url')}"
+                       + (f" (focus: {h['focus']})" if h.get("focus") else "")
                        for h in o.hints_used)
+            if any(h.get("kind") == "focus" for h in o.hints_used):
+                out.append(f"HINT {o.slug}: focus hint(s) used as untrusted proposer context")
             out.extend(f"HINT {o.slug}: {why}" for why in o.hints_ignored)
         for s, items in sorted(self.event_source_hints.items()):
             out.extend(f"EVENT SOURCE HINT {s} {i['role']}: {i['url']}" for i in items)
@@ -223,7 +226,8 @@ def run_updates(
             # counts only next to existing redirect/title evidence.
             evidence = any(f.kind in ("website_moved", "name_mismatch") for f in pc.flags)
             out.hints_used, out.hints_ignored = context_hints(
-                load_hints(hint_store, pc.slug), allow_identity=evidence)
+                load_hints(hint_store, pc.slug), allow_identity=evidence,
+                website=old.get("website"))
             out.proposal, out.from_cache = propose_for_partner(
                 old, pc.flags, snap, cache_store, proposer, hints=out.hints_used)
             out.policy = apply_policy(

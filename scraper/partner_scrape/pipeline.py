@@ -557,13 +557,36 @@ def run(
         )
         events.extend(source_result.events)
 
-    for enricher in enrichers:
-        events = list(enricher.enrich(events))
-
     # The roster is the per-partner records in the data store (sprint 042);
     # resolve it once and hand the same list to every consumer below so
     # they can never disagree about which roster they read.
     raw_partners = resolve_partners(partners_path)
+
+    # Focus/note hints (sprint 046): untrusted per-partner context for LLM
+    # enrichment. Enrichers that support it expose `set_hint_context`.
+    if hint_store is not None:
+        from partner_scrape.hints import enrichment_context, load_hints as _load_hints
+        from partner_scrape.normalize.partners import find_partner as _find_partner, load_partners as _load_partners
+
+        _partners_by_norm = _load_partners(raw_partners)
+        _org_names = {source.source_id: source.org_name for source in sources}
+
+        def _hint_context(event: Event) -> list[dict[str, Any]]:
+            partner = _find_partner(_org_names.get(event.source_id, event.source_id), _partners_by_norm)
+            slug = (partner or {}).get("slug") or ""
+            if not slug:
+                return []
+            return enrichment_context(_load_hints(hint_store, slug), partner.get("website"))
+
+        for enricher in enrichers:
+            if hasattr(enricher, "set_hint_context"):
+                enricher.set_hint_context(_hint_context)
+
+    for enricher in enrichers:
+        events = list(enricher.enrich(events))
+        for source_id, n in sorted((getattr(enricher, "hint_used", None) or {}).items()):
+            # Printed (not just logged) so the line lands in the run log.
+            print(f"HINT ENRICH {source_id}: {n} event(s) enriched with focus/note hint context")
 
     # Roster data-quality and join-integrity validation (issue 48,
     # ticket 003) -- runs here, immediately after `resolved_partners_path`

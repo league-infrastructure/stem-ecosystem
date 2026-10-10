@@ -71,6 +71,7 @@ from __future__ import annotations
 
 import concurrent.futures
 import logging
+from typing import Any, Callable
 
 from partner_scrape.enrich.cache import EnrichmentCache
 from partner_scrape.enrich.llm_client import EnrichmentResult, LLMClient
@@ -196,10 +197,34 @@ class LLMEnricher:
         llm_client: LLMClient,
         cache: EnrichmentCache,
         max_workers: int = DEFAULT_MAX_WORKERS,
+        hint_context: Callable[[Event], list[dict[str, Any]]] | None = None,
     ) -> None:
         self.llm_client = llm_client
         self.cache = cache
         self.max_workers = max_workers
+        self.hint_context = hint_context
+        #: source_id -> number of events enriched with focus/note hint context.
+        self.hint_used: dict[str, int] = {}
+
+    def set_hint_context(self, resolver: Callable[[Event], list[dict[str, Any]]] | None) -> None:
+        """Install the per-event focus/note hint resolver (untrusted context)."""
+        self.hint_context = resolver
+
+    def _context(self, event: Event) -> list[dict[str, Any]] | None:
+        if self.hint_context is None:
+            return None
+        try:
+            return self.hint_context(event) or None
+        except Exception:  # noqa: BLE001 - hints are optional; never abort enrichment
+            logger.warning("hint context lookup failed for %r", event.title, exc_info=True)
+            return None
+
+    def _call_llm(self, event: Event, context: list[dict[str, Any]] | None) -> EnrichmentResult:
+        # Context is passed only when present, so context-unaware LLMClient
+        # implementations keep working unchanged.
+        if context:
+            return self.llm_client.enrich_event(event, context)
+        return self.llm_client.enrich_event(event)
 
     def enrich(self, events: list[Event]) -> list[Event]:
         """Enrich and relevance-gate ``events`` (fulfills `pipeline.Enricher`).
@@ -229,7 +254,8 @@ class LLMEnricher:
                 # below, unchanged.
                 continue
 
-            cached_result = self.cache.lookup(event)
+            ctx = self._context(event)
+            cached_result = self.cache.lookup(event, ctx) if ctx else self.cache.lookup(event)
             if cached_result is not None:
                 _apply_result(event, cached_result, source=LLM_SOURCE, confidence=LLM_CONFIDENCE)
             else:
@@ -239,12 +265,20 @@ class LLMEnricher:
         # per miss, run across a bounded thread pool. Each future's
         # result/exception is recorded by index -- no other shared
         # mutable state crosses threads here.
+        contexts = [self._context(event) for event in misses]
+        for event, ctx in zip(misses, contexts):
+            if ctx:
+                self.hint_used[event.source_id] = self.hint_used.get(event.source_id, 0) + 1
+                logger.info(
+                    "enrichment: focus/note hint context used (untrusted) for %r (source_id=%r)",
+                    event.title, event.source_id,
+                )
         results: list[EnrichmentResult | None] = [None] * len(misses)
         errors: list[BaseException | None] = [None] * len(misses)
         if misses:
             with concurrent.futures.ThreadPoolExecutor(max_workers=self.max_workers) as executor:
                 future_to_index = {
-                    executor.submit(self.llm_client.enrich_event, event): index
+                    executor.submit(self._call_llm, event, contexts[index]): index
                     for index, event in enumerate(misses)
                 }
                 for future in concurrent.futures.as_completed(future_to_index):
@@ -293,7 +327,10 @@ class LLMEnricher:
                 # *pre-enrichment* Event fresh from the adapter -- so every
                 # Event whose date/cost/location the LLM recovered would
                 # miss the cache forever and be re-billed. Store first.
-                self.cache.store(event, result)
+                if contexts[index]:
+                    self.cache.store(event, result, contexts[index])
+                else:
+                    self.cache.store(event, result)
                 _apply_result(event, result, source=LLM_SOURCE, confidence=LLM_CONFIDENCE)
 
         # Relevance Gate (SUC-012), applied once over the full input in

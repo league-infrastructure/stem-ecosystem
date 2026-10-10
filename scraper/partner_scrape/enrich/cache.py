@@ -58,7 +58,7 @@ _CACHE_SUBDIR = "enrichment"
 _CACHE_SCHEMA_VERSION = 1
 
 
-def content_hash(event: Event) -> str:
+def content_hash(event: Event, context: list[dict[str, Any]] | None = None) -> str:
     """Compute a stable hash over ``event``'s enrichable fields.
 
     Only the fields an LLM enrichment call actually reads (mirrors
@@ -79,6 +79,8 @@ def content_hash(event: Event) -> str:
         "categories": event.categories,
         "tags": event.tags,
     }
+    if context:  # absent when empty: hint-free partners keep their existing hashes
+        payload["hint_context"] = context
     canonical = json.dumps(payload, sort_keys=True, default=str)
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
@@ -146,7 +148,7 @@ class EnrichmentCache:
         )
         self._clock = clock
 
-    def lookup(self, event: Event) -> EnrichmentResult | None:
+    def lookup(self, event: Event, context: list[dict[str, Any]] | None = None) -> EnrichmentResult | None:
         """Return the cached `EnrichmentResult` for ``event`` if its
         current content hash matches the cached entry's, else ``None``
         (no cache entry yet, or the Event's enrichable content changed
@@ -170,16 +172,18 @@ class EnrichmentCache:
             # content_hash cannot catch this: it deliberately covers
             # only an Event's input fields, never the prompt text.
             return None
-        if entry["content_hash"] != content_hash(event):
+        if entry["content_hash"] != content_hash(event, context):
             return None
         return _result_from_jsonable(entry["result"])
 
-    def store(self, event: Event, result: EnrichmentResult) -> None:
+    def store(
+        self, event: Event, result: EnrichmentResult, context: list[dict[str, Any]] | None = None
+    ) -> None:
         """Write a fresh cache entry for ``event`` at its current content hash."""
         entry = {
             "schema_version": _CACHE_SCHEMA_VERSION,
             "prompt_version": PROMPT_VERSION,
-            "content_hash": content_hash(event),
+            "content_hash": content_hash(event, context),
             "result": _result_to_jsonable(result),
             "enriched_at": self._clock().isoformat(),
         }

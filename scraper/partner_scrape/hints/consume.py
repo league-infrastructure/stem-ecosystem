@@ -57,8 +57,43 @@ def _clip(text: Any, limit: int = 500) -> str:
     return str(text or "")[:limit]
 
 
+def focus_hints(
+    hints: list[dict[str, Any]], website: str | None = None
+) -> list[dict[str, Any]]:
+    """Page hints that carry a ``focus``, as untrusted prompt context.
+
+    Each item is ``{"kind": "focus", "role", "url", "focus"}``. The focus is
+    guidance about where to look, never a fact source. With ``website`` the
+    URL is re-checked to be on the partner's domain.
+    """
+    domains = domains_of(website) if website else None
+    out: list[dict[str, Any]] = []
+    for h in hints_of({"hints": hints}, "page"):
+        focus, url = h.get("focus"), h.get("url")
+        if not isinstance(focus, str) or not focus.strip() or not isinstance(url, str):
+            continue
+        if domains is not None:
+            host = domains_of(url)
+            if not host or not on_domain(host[0], domains):
+                continue
+        out.append({"kind": "focus", "role": _clip(h.get("role"), 40),
+                    "url": _clip(url, 500), "focus": _clip(focus.strip(), 300)})
+    return out
+
+
+def enrichment_context(
+    hints: list[dict[str, Any]], website: str | None = None
+) -> list[dict[str, Any]]:
+    """Focus and note hints for LLM event enrichment (empty when none)."""
+    ctx = focus_hints(hints, website)
+    for h in hints:
+        if h.get("kind") == "note" and h.get("text"):
+            ctx.append({"kind": "note", "text": _clip(h["text"])})
+    return ctx
+
+
 def context_hints(
-    hints: list[dict[str, Any]], *, allow_identity: bool
+    hints: list[dict[str, Any]], *, allow_identity: bool, website: str | None = None
 ) -> tuple[list[dict[str, Any]], list[str]]:
     """Note/identity hints for the proposer prompt, plus ignore reasons.
 
@@ -66,7 +101,7 @@ def context_hints(
     redirect/title evidence is present); otherwise they are dropped and the
     reason is returned for the report.
     """
-    ctx: list[dict[str, Any]] = []
+    ctx: list[dict[str, Any]] = focus_hints(hints, website)
     ignored: list[str] = []
     for h in hints:
         kind = h.get("kind")
