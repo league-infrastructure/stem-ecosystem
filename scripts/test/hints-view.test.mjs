@@ -45,3 +45,9 @@ test('hintsDiffer is order-insensitive and detects changes', () => {
   assert.equal(hintsDiffer([], undefined), false);
   assert.equal(hintsDiffer([{ kind: 'note', z: 1, a: 2 }], [{ a: 2, z: 1, kind: 'note' }]), false);
 });
+
+test('page hint renders focus when present', () => {
+  const l = formatHint({ kind: 'page', role: 'about', url: 'https://www.jointheleague.org/about/', focus: 'age range of students' });
+  assert.equal(hintLine(l), 'About: jointheleague.org/about — focus: age range of students');
+  assert.equal(hintLine(formatHint({ kind: 'page', role: 'about', url: 'https://a.org/x' })), 'About: a.org/x');
+});

@@ -1,8 +1,9 @@
 ---
 id: '002'
 title: 'Page-hint focus field: model, agent schema/prompt, hints card'
-status: open
-use-cases: [SUC-003]
+status: done
+use-cases:
+- SUC-003
 depends-on: []
 github-issue: ''
 issue: 86-page-hints-need-a-focus-and-the-guard-is-too-strict.md
@@ -18,10 +19,10 @@ Add optional `focus` (<=300 chars, stripped, validated like `note`) to page hint
 
 ## Acceptance Criteria
 
-- [ ] focus accepted/validated with length cap; absent focus still valid
-- [ ] Agent schema and prompt updated
-- [ ] Hints card renders 'focus: ...'
-- [ ] Tests in scraper (uv run pytest) and site (npm test) pass
+- [x] focus accepted/validated with length cap; absent focus still valid
+- [x] Agent schema and prompt updated
+- [x] Hints card renders 'focus: ...'
+- [x] Tests in scraper (uv run pytest) and site (npm test) pass
 
 ## Testing
 
