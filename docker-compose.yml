@@ -51,7 +51,7 @@ services:
       dockerfile: scraper/docker/Dockerfile.sidecar
     environment:
       SCRAPER_SECRETS_FILE: /run/secrets/stem-ecosystem_updates_secrets
-      UPDATES_ALLOWED_ORIGINS: ${UPDATES_ALLOWED_ORIGINS:-https://www.sdstemecosystem.org,https://sdstemecosystem.org,http://localhost:4322,http://localhost:4323}
+      UPDATES_ALLOWED_ORIGINS: ${UPDATES_ALLOWED_ORIGINS:-https://www.sdstemecosystem.org,https://sdstemecosystem.org,http://localhost:4322,http://localhost:4323,http://crispin.tail185923.ts.net:4323,http://crispin:4323,http://100.83.248.125:4323}
       UPDATES_FALLBACK_EMAIL: ${UPDATES_FALLBACK_EMAIL:-partners@sdstemecosystem.org}
       UPDATES_DAILY_SPEND_USD: ${UPDATES_DAILY_SPEND_USD:-5}
     secrets:
