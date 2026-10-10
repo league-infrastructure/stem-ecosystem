@@ -1,7 +1,7 @@
 {
   "name": "stem-ecosystem",
   "type": "module",
-  "version": "0.20261010.1",
+  "version": "0.20261010.2",
   "scripts": {
     "fetch-data": "node scripts/fetch-data.mjs",
     "predev": "node scripts/fetch-data.mjs --if-missing",

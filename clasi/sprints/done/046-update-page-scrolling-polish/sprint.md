@@ -1,7 +1,7 @@
 ---
 id: '046'
 title: Update page scrolling polish
-status: planning-docs
+status: done
 branch: sprint/046-update-page-scrolling-polish
 use-cases:
 - SUC-001
