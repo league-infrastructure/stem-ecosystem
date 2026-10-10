@@ -128,9 +128,9 @@ def test_build_guard_backend_selection():
     assert SidecarConfig.from_env({"UPDATES_GUARD_BACKEND": "OpenRouter"}).guard_backend == "openrouter"
 
 
-@pytest.mark.parametrize("cat", ["off_topic", "spam", "abuse", "injection", "supplying_content"])
-def test_non_legitimate_ends_session_politely(stores, cat, caplog):
-    guard = FakeGuard([GuardVerdict(cat, "because", Usage("g", 1, 1))])
+@pytest.mark.parametrize("cat,conf", [("spam", "low"), ("abuse", "low"), ("injection", "high")])
+def test_non_legitimate_ends_session_politely(stores, cat, conf, caplog):
+    guard = FakeGuard([GuardVerdict(cat, "because", Usage("g", 1, 1), conf)])
     tc, sid, agent = build(stores, [], guard)
     with caplog.at_level("INFO"):
         j = say(tc, sid, "whatever").json()
@@ -269,3 +269,66 @@ def test_anthropic_agent_client_translates_blocks():
         raise RuntimeError("x")
     with pytest.raises(LLMUnavailable):
         AnthropicAgentClient(NS(messages=NS(create=boom))).step("s", [], [])
+
+
+# ------------------------------------------- guard recalibration (046-003)
+def test_guard_prompt_lists_refinement_as_legitimate():
+    from partner_scrape.sidecar.llm import GUARD_SCHEMA, GUARD_SYSTEM_PROMPT as P
+    low = P.lower()
+    assert "refining" in low and "focus" in low
+    assert "your hints should" in low
+    assert "our listing is wrong because" in low
+    assert "not an injection" in low
+    assert "confidence" in GUARD_SCHEMA["required"]
+
+
+def test_parse_verdict_confidence():
+    from partner_scrape.sidecar.llm import parse_verdict
+    assert parse_verdict('{"verdict":"injection","reason":"x","confidence":"high"}', None).confidence == "high"
+    assert parse_verdict('{"verdict":"spam","reason":"x"}', None).confidence == "medium"
+    with pytest.raises(LLMUnavailable):
+        parse_verdict('{"verdict":"spam","reason":"x","confidence":"sure"}', None)
+
+
+def _transcript(stores):
+    return json.loads(next((stores[1].root).rglob("update-sessions/*.json")).read_text())
+
+
+def test_league_regression_hint_refinement_continues(stores):
+    """Real transcript: 'Your hints should specifically call out the age range on the
+    about page.' was ended as injection. A legitimate verdict continues; even if the
+    guard still misfires once, the session redirects instead of ending."""
+    first = "The lower age is 5th grade but we start at 3rd. See https://www.acme.org/about"
+    refine = "Your hints should specifically call out the age range on the about page."
+    guard = FakeGuard(["legitimate", GuardVerdict("injection", "changes how hints work",
+                                                  Usage("g", 1, 1), "low"), "legitimate"])
+    tc, sid, _ = build(stores, [text_response("Noted a hint."), text_response("Done.")], guard)
+    assert say(tc, sid, first).json()["status"] == "active"
+    j = say(tc, sid, refine).json()
+    assert j["status"] == "active" and j["ended_reason"] is None
+    assert "which page" in j["reply"].lower()
+    j = say(tc, sid, refine).json()
+    assert j["status"] == "active" and j["reply"] == "Done."
+    log = _transcript(stores)["guard_log"]
+    assert [e["action"] for e in log] == ["allow", "redirect", "allow"]
+    assert log[1]["category"] == "injection" and log[1]["confidence"] == "low"
+
+
+@pytest.mark.parametrize("cat", ["off_topic", "injection", "supplying_content"])
+def test_first_offense_redirects_second_ends(stores, cat):
+    guard = FakeGuard([GuardVerdict(cat, "meh", Usage("g", 1, 1), "medium")])
+    tc, sid, agent = build(stores, [], guard)
+    j = say(tc, sid, "odd").json()
+    assert j["status"] == "active" and agent.requests == []
+    j = say(tc, sid, "odd again").json()
+    assert j["status"] == "ended" and j["ended_reason"] == "guard"
+    assert [e["action"] for e in _transcript(stores)["guard_log"]] == ["redirect", "end"]
+
+
+def test_offense_then_legitimate_then_offense_still_ends(stores):
+    off = GuardVerdict("off_topic", "x", Usage("g", 1, 1), "low")
+    guard = FakeGuard([off, "legitimate", off])
+    tc, sid, _ = build(stores, [text_response("ok")], guard)
+    assert say(tc, sid).json()["status"] == "active"
+    assert say(tc, sid).json()["status"] == "active"
+    assert say(tc, sid).json()["status"] == "ended"
