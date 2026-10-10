@@ -33,6 +33,10 @@ class Session:
     confirmed: bool = False
     #: Guard category and reason when the guard ended the session (logged).
     guard_reason: str | None = None
+    #: Per-turn guard verdicts (category, reason, confidence, action), logged.
+    guard_log: list[dict[str, Any]] = field(default_factory=list)
+    #: Non-legitimate verdicts so far; the first is redirected, the second ends.
+    guard_offenses: int = 0
     #: Token usage of every model call, for spend accounting.
     usage: list[dict[str, Any]] = field(default_factory=list)
     lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
@@ -52,6 +56,7 @@ class Session:
             "ended_reason": self.ended_reason,
             "confirmed": self.confirmed,
             "guard_reason": self.guard_reason,
+            "guard_log": self.guard_log,
             "usage": self.usage,
             "messages": self.messages,
             "proposed_hints": self.proposed_hints,

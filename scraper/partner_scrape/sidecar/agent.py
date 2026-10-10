@@ -73,6 +73,12 @@ EDIT_HINTS_TOOL: dict[str, Any] = {
                                 "description": "page hints only; on the partner's own website"},
                         "match": {"type": "string",
                                   "description": "exclude hints: substring, or 're:' + regex"},
+                        "focus": {"type": "string",
+                                  "description": (
+                                      "page hints only, optional, max 300 chars: what to "
+                                      "look at on that page (e.g. 'the age range / grades "
+                                      "in the program description'). Steers the scraper; "
+                                      "never a fact.")},
                         "reason": {"type": "string", "description": "exclude hints only"},
                         "text": {"type": "string", "description": "note hints only"},
                         "name": {"type": "string", "description": "identity hints only"},
@@ -99,6 +105,11 @@ listing field, and you must never claim to. What you CAN do is give our \
 automatic scraper hints, which steer where it looks:
   - page: point it at a page on the partner's own website (about, contact, \
 events, camps, programs, other)
+    Give a page hint a `focus` (short text: which part, field or detail of \
+that page matters) whenever the person says what matters on it; if a page \
+hint has no focus, ask what on that page the scraper should look at. The \
+focus only says where to look; never put the fact itself (an age, price, \
+date) from the chat into it.
   - exclude: tell it to skip events whose text matches a phrase (use a plain \
 substring unless a regex is truly needed)
   - note: a short hint for the scraper's reviewer, never a fact to publish

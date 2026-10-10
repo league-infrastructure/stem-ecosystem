@@ -1,8 +1,10 @@
 ---
 id: '001'
 title: 'Update page: chat scrolls independently, sticky hints, hide messages-left'
-status: open
-use-cases: [SUC-001, SUC-002]
+status: done
+use-cases:
+- SUC-001
+- SUC-002
 depends-on: []
 github-issue: ''
 issue: 85-update-page-chat-scrolls-independently-hide-messages-left.md
@@ -18,13 +20,13 @@ On desktop, bound the chat panel height (viewport minus sticky header) with a sc
 
 ## Acceptance Criteria
 
-- [ ] Transcript scrolls inside bounded chat panel on desktop; input stays visible
-- [ ] Hints panel sticky
-- [ ] Auto-scroll to newest message, respecting user scroll-up
-- [ ] Phone breakpoint unchanged (stacked, page scroll)
-- [ ] No 'messages left' text or update code; server cap and end message unchanged
-- [ ] role=log/aria-live kept; scroll region keyboard-focusable (tabindex)
-- [ ] npm test and npm run build pass
+- [x] Transcript scrolls inside bounded chat panel on desktop; input stays visible
+- [x] Hints panel sticky
+- [x] Auto-scroll to newest message, respecting user scroll-up
+- [x] Phone breakpoint unchanged (stacked, page scroll)
+- [x] No 'messages left' text or update code; server cap and end message unchanged
+- [x] role=log/aria-live kept; scroll region keyboard-focusable (tabindex)
+- [x] npm test and npm run build pass
 
 ## Testing
 

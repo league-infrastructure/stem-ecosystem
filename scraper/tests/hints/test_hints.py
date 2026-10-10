@@ -192,3 +192,16 @@ def test_writer_verifies_identity_with_injected_fetcher(tmp_path):
 def test_bad_slug(w):
     with pytest.raises(ValueError):
         w.put_hints("../x", [], "update-agent:s", domains=DOMS)
+
+
+def test_page_focus_validated():
+    base = {"kind": "page", "role": "about", "url": "https://acme.org/about"}
+    assert v([base]) == [base]  # absent focus still valid
+    out = v([{**base, "focus": "  age range of students  "}])
+    assert out[0]["focus"] == "age range of students"
+    assert "focus" not in v([{**base, "focus": "   "}])[0]
+    with pytest.raises(Exception):
+        v([{**base, "focus": "x" * 301}])
+    with pytest.raises(Exception):
+        v([{**base, "focus": 5}])
+    v([{**base, "focus": "x" * 300}])

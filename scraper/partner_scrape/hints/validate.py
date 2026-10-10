@@ -108,7 +108,7 @@ def _check_extra(h: dict, allowed: set[str]) -> None:
 
 
 def _validate_page(h: dict, domains: list[str]) -> dict:
-    _check_extra(h, {"role", "url"})
+    _check_extra(h, {"role", "url", "focus"})
     role = h.get("role")
     if role not in m.PAGE_ROLES:
         raise HintError(f"page hint role must be one of {', '.join(m.PAGE_ROLES)}")
@@ -120,7 +120,11 @@ def _validate_page(h: dict, domains: list[str]) -> dict:
         raise HintError(
             f"page hint url {parsed.hostname} is not on the organization's website domain"
         )
-    return {"kind": "page", "role": role, "url": url}
+    out = {"kind": "page", "role": role, "url": url}
+    focus = _text(h, "focus", m.MAX_FOCUS_CHARS, required=False)
+    if focus:
+        out["focus"] = focus
+    return out
 
 
 def _validate_exclude(h: dict) -> dict:

@@ -21,8 +21,14 @@ export function initUpdateChat(page: HTMLElement, type: string, slug: string): v
   let ended = false;
   let busy = false;
   let confirmed = false;
-  let turnsLeft: number | null = null;
   let entityName = '';
+
+  // Auto-scroll state: true while the reader is at (or near) the bottom.
+  let stickToBottom = true;
+  transcript.tabIndex = 0; // keyboard-scrollable region
+  transcript.addEventListener('scroll', () => {
+    stickToBottom = transcript.scrollHeight - transcript.scrollTop - transcript.clientHeight < 40;
+  });
 
   // --- build static chat controls (no server text) ---
   const status = el('p', 'chat-status');
@@ -39,7 +45,6 @@ export function initUpdateChat(page: HTMLElement, type: string, slug: string): v
   const sendBtn = el('button', 'chat-send btn', 'Send') as HTMLButtonElement;
   sendBtn.type = 'submit';
   const hintEl = el('p', 'chat-hint', 'Enter to send, Shift+Enter for a new line.');
-  const turns = el('p', 'chat-turns');
   const restart = el('button', 'chat-restart btn btn-outline', 'Start again') as HTMLButtonElement;
   restart.type = 'button';
   restart.hidden = true;
@@ -47,7 +52,7 @@ export function initUpdateChat(page: HTMLElement, type: string, slug: string): v
   retry.type = 'button';
   retry.hidden = true;
   form.append(label, input, sendBtn, hintEl);
-  chatSection.append(notices, status, turns, form, retry, restart);
+  chatSection.append(notices, status, form, retry, restart);
 
   function el(tag: string, cls = '', text = ''): HTMLElement {
     const e = document.createElement(tag);
@@ -76,7 +81,12 @@ export function initUpdateChat(page: HTMLElement, type: string, slug: string): v
     renderRich(body, text);
     m.append(who, body);
     transcript.append(m);
-    m.scrollIntoView?.({ block: 'nearest' });
+    // Follow the newest message unless the user scrolled up to read; their own
+    // message always snaps to the bottom. Scrolls the transcript, not the page.
+    if (stickToBottom || role === 'user') {
+      transcript.scrollTop = transcript.scrollHeight;
+      stickToBottom = true;
+    }
   }
 
   // Builds DOM nodes only (textContent / createTextNode); never parses HTML.
@@ -98,10 +108,6 @@ export function initUpdateChat(page: HTMLElement, type: string, slug: string): v
       });
       target.append(p);
     }
-  }
-
-  function renderTurns() {
-    turns.textContent = turnsLeft === null ? '' : `${turnsLeft} message${turnsLeft === 1 ? '' : 's'} left in this conversation.`;
   }
 
   function renderNotices(list: unknown) {
@@ -186,9 +192,7 @@ export function initUpdateChat(page: HTMLElement, type: string, slug: string): v
     fallbackEmail = v.fallback_email || fallbackEmail;
     saved = v.hints || [];
     proposed = v.proposed_hints || saved;
-    if (typeof v.turns_left === 'number') turnsLeft = v.turns_left;
     if (v.entity?.name) entityName = v.entity.name;
-    renderTurns();
   }
 
   async function start() {
@@ -248,9 +252,7 @@ export function initUpdateChat(page: HTMLElement, type: string, slug: string): v
       input.value = '';
       addMessage('assistant', r.reply);
       proposed = r.proposed_hints || proposed;
-      if (typeof r.turns_left === 'number') turnsLeft = r.turns_left;
-      renderTurns();
-      renderNotices(r.notices);
+        renderNotices(r.notices);
       confirmed = false;
       renderHints();
       if (r.status === 'ended') {

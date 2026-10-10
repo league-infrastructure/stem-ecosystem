@@ -1,9 +1,11 @@
 ---
 id: '004'
 title: 'Scraper consumes focus: updates proposer and event enrichment'
-status: open
-use-cases: [SUC-005]
-depends-on: ['002']
+status: done
+use-cases:
+- SUC-005
+depends-on:
+- '002'
 github-issue: ''
 issue: 86-page-hints-need-a-focus-and-the-guard-is-too-strict.md
 completes_issue: false
@@ -18,11 +20,11 @@ Pass page-hint focus text plus URL as untrusted context to the updates proposer 
 
 ## Acceptance Criteria
 
-- [ ] Proposer prompt includes focus context, marked untrusted
-- [ ] Enrichment prompt includes focus context for that partner's events
-- [ ] Logs record focus-hint use
-- [ ] Focus not treated as a fact source (test)
-- [ ] uv run pytest passes
+- [x] Proposer prompt includes focus context, marked untrusted
+- [x] Enrichment prompt includes focus context for that partner's events
+- [x] Logs record focus-hint use
+- [x] Focus not treated as a fact source (test)
+- [x] uv run pytest passes
 
 ## Testing
 

@@ -1,9 +1,11 @@
 ---
 id: '003'
 title: 'Guard recalibration: allow hint refinement, redirect before ending'
-status: open
-use-cases: [SUC-004]
-depends-on: ['002']
+status: done
+use-cases:
+- SUC-004
+depends-on:
+- '002'
 github-issue: ''
 issue: 86-page-hints-need-a-focus-and-the-guard-is-too-strict.md
 completes_issue: false
@@ -18,11 +20,11 @@ Recalibrate guard prompt (sidecar/llm.py) and handling (sidecar/app.py): hint re
 
 ## Acceptance Criteria
 
-- [ ] Refinement messages pass the guard
-- [ ] Redirect before end; per-session offense count
-- [ ] Ends on clear abuse, high-confidence injection, or second offense
-- [ ] Regression test from history/update-sessions/20261010T151406Z-the_league_of_amazing_programmers-*.json: session does not end
-- [ ] uv run pytest passes
+- [x] Refinement messages pass the guard
+- [x] Redirect before end; per-session offense count
+- [x] Ends on clear abuse, high-confidence injection, or second offense
+- [x] Regression test from history/update-sessions/20261010T151406Z-the_league_of_amazing_programmers-*.json: session does not end
+- [x] uv run pytest passes
 
 ## Testing
 

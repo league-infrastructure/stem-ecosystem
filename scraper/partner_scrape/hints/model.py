@@ -14,6 +14,7 @@ PAGE_ROLES = ("about", "contact", "events", "camps", "programs", "other")
 MAX_HINTS_PER_KIND = {"page": 10, "exclude": 20, "note": 10, "identity": 1}
 MAX_TOTAL_HINTS = 41
 MAX_TEXT_CHARS = 500  # note text
+MAX_FOCUS_CHARS = 300  # page-hint focus
 MAX_REASON_CHARS = 200
 MAX_MATCH_CHARS = 100
 MAX_REGEX_CHARS = 100

@@ -143,6 +143,33 @@ class UpdateService:
             f"Please try again in a few minutes or email {self.config.fallback_email}.",
         )
 
+    @staticmethod
+    def _guard_action(s: Session, verdict) -> str:
+        """allow | redirect | end. Records the offense for non-legitimate verdicts.
+
+        The first borderline, off-topic or injection-looking message is
+        redirected; spam/abuse, a high-confidence injection or a second
+        offense ends the session.
+        """
+        if verdict.legitimate:
+            return "allow"
+        s.guard_offenses += 1
+        if (
+            verdict.category in ("spam", "abuse")
+            or (verdict.category == "injection" and verdict.confidence == "high")
+            or s.guard_offenses >= 2
+        ):
+            return "end"
+        return "redirect"
+
+    def _redirect_message(self) -> str:
+        return (
+            "I can only help with pointing the scraper at the right pages on your "
+            "website (and what part of a page to focus on), what to ignore, or a "
+            "rebrand. I couldn't act on that last message. Which page or detail "
+            "would you like me to look at?"
+        )
+
     def _end_message(self, reason: str) -> str:
         if reason == "turn_cap":
             why = "We've reached the limit for this conversation."
@@ -245,6 +272,28 @@ class UpdateService:
             if verdict.usage:
                 s.usage.append(verdict.usage.to_dict())
         s.messages.append({"role": "user", "text": text, "ts": ts})
+        if verdict is not None:
+            action = self._guard_action(s, verdict)
+            s.guard_log.append({
+                "turn": s.user_turns, "category": verdict.category,
+                "reason": verdict.reason, "confidence": verdict.confidence,
+                "action": action,
+            })
+            if action == "redirect":
+                log.info("guard redirected session %s: %s: %s", s.id,
+                         verdict.category, verdict.reason)
+                reply = self._redirect_message()
+                if s.user_turns >= self.config.max_turns:
+                    s.status, s.ended_reason = "ended", "turn_cap"
+                    reply = f"{reply}\n\n{self._end_message('turn_cap')}"
+                s.messages.append({"role": "assistant", "text": reply, "ts": ts})
+                self.transcripts.write(s)
+                return JSONResponse({
+                    "reply": reply, "proposed_hints": s.proposed_hints,
+                    "status": s.status, "ended_reason": s.ended_reason,
+                    "turns_left": max(self.config.max_turns - s.user_turns, 0),
+                    "notices": [],
+                })
         if verdict is not None and not verdict.legitimate:
             s.status, s.ended_reason = "ended", "guard"
             s.guard_reason = f"{verdict.category}: {verdict.reason}"

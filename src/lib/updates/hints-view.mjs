@@ -1,5 +1,5 @@
 // Format scraping hints into readable labelled lines. Pure, no DOM.
-// Hint kinds: page {role,url}, exclude {match,reason}, note {text},
+// Hint kinds: page {role,url,focus?}, exclude {match,reason}, note {text},
 // identity {name?,website?}.
 
 const ROLE_LABELS = {
@@ -34,7 +34,7 @@ export function formatHint(hint) {
   if (!hint || typeof hint !== 'object') return null;
   switch (hint.kind) {
     case 'page':
-      return { kind: 'page', label: ROLE_LABELS[hint.role] || ROLE_LABELS.other, text: shortUrl(hint.url) };
+      return { kind: 'page', label: ROLE_LABELS[hint.role] || ROLE_LABELS.other, text: hint.focus ? `${shortUrl(hint.url)} \u2014 focus: ${String(hint.focus)}` : shortUrl(hint.url) };
     case 'exclude': {
       const reason = hint.reason ? ` (${hint.reason})` : '';
       return { kind: 'exclude', label: 'Skip', text: `${matchText(hint.match)}${reason}` };
