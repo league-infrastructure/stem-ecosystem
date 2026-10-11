@@ -146,7 +146,7 @@ const listings = [
   .update-panels { display: grid; grid-template-columns: 3fr 2fr; gap: 24px; align-items: start; }
   .update-panels > * { min-width: 0; }
   .update-chat, .update-hints { background: var(--white); border-radius: var(--radius); box-shadow: var(--shadow); padding: 14px 18px; }
-  .chat-transcript { display: flex; flex-direction: column; gap: 12px; max-height: 60vh; overflow-y: auto; overscroll-behavior: contain; }
+  .chat-transcript { display: flex; flex-direction: column; gap: 12px; max-height: var(--chat-max, max(180px, calc(100vh - 460px))); overflow-y: auto; overscroll-behavior: contain; }
   .chat-transcript:not(:empty) { margin-bottom: 12px; }
   .chat-msg { max-width: 88%; padding: 10px 14px; border-radius: 12px; }
   .chat-assistant { align-self: flex-start; background: var(--purple-faint); border: 1px solid var(--purple-light); border-top-left-radius: 2px; }
