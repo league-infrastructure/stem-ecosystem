@@ -1,7 +1,7 @@
 ---
 id: '047'
 title: Update page compact layout
-status: planning-docs
+status: done
 branch: sprint/047-update-page-compact-layout
 use-cases:
 - SUC-001
