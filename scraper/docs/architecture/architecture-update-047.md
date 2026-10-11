@@ -1,6 +1,6 @@
 ---
-sprint: "047"
-status: draft
+sprint: '047'
+status: done
 ---
 
 # Architecture Update -- Sprint 047: Update page compact layout

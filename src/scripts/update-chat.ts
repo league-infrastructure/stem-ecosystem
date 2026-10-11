@@ -40,7 +40,7 @@ export function initUpdateChat(page: HTMLElement, type: string, slug: string): v
   label.htmlFor = 'chat-input';
   const input = document.createElement('textarea');
   input.id = 'chat-input';
-  input.rows = 4;
+  input.rows = 3;
   input.maxLength = 4000;
   const sendBtn = el('button', 'chat-send btn', 'Send') as HTMLButtonElement;
   sendBtn.type = 'submit';
@@ -74,6 +74,37 @@ export function initUpdateChat(page: HTMLElement, type: string, slug: string): v
     status.textContent = text;
   }
 
+  // Size the transcript so the whole chat panel (transcript + input block) fits in
+  // the viewport below the sticky site header. The CSS var has a calc() fallback.
+  function fitTranscript() {
+    const header = document.querySelector('.site-header');
+    const headerH = header ? header.getBoundingClientRect().height : 70;
+    const other = chatSection.offsetHeight - transcript.offsetHeight;
+    const avail = window.innerHeight - headerH - 24 - other;
+    transcript.style.setProperty('--chat-max', `${Math.max(180, Math.floor(avail))}px`);
+  }
+  window.addEventListener('resize', fitTranscript);
+  if (typeof ResizeObserver !== 'undefined') {
+    const ro = new ResizeObserver(fitTranscript);
+    ro.observe(notices);
+    ro.observe(status);
+    ro.observe(form);
+  }
+  fitTranscript();
+
+  // Keep the input on screen without moving the page when it already is.
+  function ensureInputVisible() {
+    const margin = 16;
+    const header = document.querySelector('.site-header');
+    const top = header ? header.getBoundingClientRect().bottom : 0;
+    const r = form.getBoundingClientRect(); // label + textarea + Send + hint
+    if (r.bottom > window.innerHeight - margin) {
+      window.scrollBy(0, r.bottom - (window.innerHeight - margin));
+    } else if (r.top < top) {
+      window.scrollBy(0, r.top - top - 8);
+    }
+  }
+
   function addMessage(role: 'user' | 'assistant', text: string) {
     const m = el('div', `chat-msg chat-${role}`);
     const who = el('strong', 'chat-who', role === 'user' ? 'You' : 'Assistant');
@@ -81,12 +112,15 @@ export function initUpdateChat(page: HTMLElement, type: string, slug: string): v
     renderRich(body, text);
     m.append(who, body);
     transcript.append(m);
+    fitTranscript();
     // Follow the newest message unless the user scrolled up to read; their own
     // message always snaps to the bottom. Scrolls the transcript, not the page.
     if (stickToBottom || role === 'user') {
       transcript.scrollTop = transcript.scrollHeight;
       stickToBottom = true;
     }
+    ensureInputVisible();
+    requestAnimationFrame(ensureInputVisible);
   }
 
   // Builds DOM nodes only (textContent / createTextNode); never parses HTML.

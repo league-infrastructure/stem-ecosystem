@@ -1,11 +1,11 @@
 ---
-id: "001"
-title: "Compact header and content-sized chat layout"
-status: open
+id: '001'
+title: Compact header and content-sized chat layout
+status: done
 use-cases:
 - SUC-001
 depends-on: []
-github-issue: ""
+github-issue: ''
 issue: 87-update-page-compact-header-and-normal-chat-box.md
 completes_issue: false
 ---
@@ -19,11 +19,11 @@ Programmer ticket. In `src/pages/update.astro` and `src/scripts/update-chat.ts`,
 
 ## Acceptance Criteria
 
-- [ ] Compact header, one-line explainer, no-JS fallback kept
-- [ ] Transcript sized to content, no reserved empty space; max-height scroll with input visible
-- [ ] Hints sticky beside chat on desktop, below chat on phone
-- [ ] Accessibility behaviors preserved
-- [ ] `npm test` and `npm run build` pass
+- [x] Compact header, one-line explainer, no-JS fallback kept
+- [x] Transcript sized to content, no reserved empty space; max-height scroll with input visible
+- [x] Hints sticky beside chat on desktop, below chat on phone
+- [x] Accessibility behaviors preserved
+- [x] `npm test` and `npm run build` pass
 
 ## Testing
 
