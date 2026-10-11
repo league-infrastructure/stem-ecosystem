@@ -21,22 +21,18 @@ const listings = [
   title="Request an update | SD STEM Ecosystem"
   description="Tell us what is wrong or out of date on a listing and our assistant will help get it fixed."
 >
-  <section class="hero hero-sm">
-    <h1>Request an update</h1>
-  </section>
+  <div class="update-bar">
+    <div class="container">
+      <h1>Request an update<span id="update-bar-listing" class="update-bar-listing" hidden></span></h1>
+    </div>
+  </div>
 
   <div class="update-page container" data-api-url={apiUrl} data-base={base}>
-    <section class="update-explainer" aria-labelledby="update-how">
-      <h2 id="update-how">How updates work</h2>
+    <div class="update-explainer">
       <p>
-        We only publish information that appears on your organization's own website. If a listing
-        is wrong or out of date, tell our assistant where on your website the correct information
-        can be found and what is currently wrong. The next scheduled scrape will pick up the
-        change.
-      </p>
-      <p>
-        Prefer email? Write to
-        <a href="mailto:partners@sdstemecosystem.org">partners@sdstemecosystem.org</a>.
+        Tell us where on your website the right information is; we'll pick it up on the next
+        scrape. Prefer email?
+        <a href="mailto:partners@sdstemecosystem.org">partners@sdstemecosystem.org</a>
       </p>
       <noscript>
         <p class="update-noscript" role="note">
@@ -45,7 +41,7 @@ const listings = [
           listing name and what needs to change.
         </p>
       </noscript>
-    </section>
+    </div>
 
     <section class="update-picker" id="update-picker" aria-labelledby="picker-h" hidden>
       <h2 id="picker-h">Choose a listing</h2>
@@ -58,7 +54,7 @@ const listings = [
     <div class="update-panels" id="update-panels" hidden>
       <section class="update-chat" id="update-chat" aria-labelledby="chat-h"
         data-api-url={apiUrl}>
-        <h2 id="chat-h">Chat with the update assistant</h2>
+        <h2 id="chat-h" class="sr-only">Chat with the update assistant</h2>
         <div id="chat-transcript" class="chat-transcript" role="log" aria-live="polite"></div>
       </section>
       <aside class="update-hints" id="update-hints" aria-labelledby="hints-h" data-api-url={apiUrl}>
@@ -85,6 +81,13 @@ const listings = [
     page.dataset.type = type;
     page.dataset.slug = slug;
     initUpdateChat(page, type, slug);
+    const known = JSON.parse(document.getElementById('listing-index')!.textContent || '[]')
+      .find((l: { type: string; slug: string }) => l.type === type && l.slug === slug);
+    if (known?.name) {
+      const tag = document.getElementById('update-bar-listing')!;
+      tag.textContent = known.name;
+      tag.hidden = false;
+    }
   } else {
     const listings: { type: string; slug: string; name: string }[] = JSON.parse(
       document.getElementById('listing-index')!.textContent || '[]',
@@ -125,8 +128,14 @@ const listings = [
   /* Global: chat/hints nodes are created at runtime and carry no Astro scope attribute. */
   /* Author display rules (.btn, .update-panels grid, ...) otherwise beat the UA [hidden] rule. */
   .update-page [hidden] { display: none !important; }
-  .update-page { padding-top: 24px; padding-bottom: 48px; }
-  .update-explainer { max-width: 760px; margin-bottom: 28px; }
+  .update-bar { background-color: #2e2255; background-image: linear-gradient(180deg, #101a33, #2e2255); color: var(--white); padding: 14px 0; }
+  .update-bar h1 { color: var(--white); font-weight: 300; font-size: 28px; line-height: 1.2; margin: 0; }
+  .update-bar-listing { font-size: 18px; opacity: 0.85; }
+  .update-bar-listing::before { content: " \2014 "; }
+  .update-page { padding-top: 16px; padding-bottom: 32px; }
+  .update-explainer { max-width: 760px; margin-bottom: 14px; }
+  .update-explainer p { margin: 0; }
+  .sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
   .update-noscript { padding: 12px 14px; border: 1px solid var(--pink); border-radius: var(--radius); background: var(--white); }
   .update-picker label { display: block; font-weight: 600; margin-bottom: 6px; color: var(--text-dark); }
   .update-picker input { width: 100%; max-width: 480px; padding: 10px 12px; font-size: 16px; border: 1px solid var(--border-light); border-radius: var(--radius); }
@@ -136,8 +145,9 @@ const listings = [
   .picker-kind { font-size: 13px; }
   .update-panels { display: grid; grid-template-columns: 3fr 2fr; gap: 24px; align-items: start; }
   .update-panels > * { min-width: 0; }
-  .update-chat, .update-hints { background: var(--white); border-radius: var(--radius); box-shadow: var(--shadow); padding: 16px 18px; min-height: 280px; }
-  .chat-transcript { min-height: 120px; display: flex; flex-direction: column; gap: 12px; margin-bottom: 12px; }
+  .update-chat, .update-hints { background: var(--white); border-radius: var(--radius); box-shadow: var(--shadow); padding: 14px 18px; }
+  .chat-transcript { display: flex; flex-direction: column; gap: 12px; max-height: 60vh; overflow-y: auto; overscroll-behavior: contain; }
+  .chat-transcript:not(:empty) { margin-bottom: 12px; }
   .chat-msg { max-width: 88%; padding: 10px 14px; border-radius: 12px; }
   .chat-assistant { align-self: flex-start; background: var(--purple-faint); border: 1px solid var(--purple-light); border-top-left-radius: 2px; }
   .chat-user { align-self: flex-end; background: var(--dark); color: var(--white); border-top-right-radius: 2px; }
@@ -149,7 +159,7 @@ const listings = [
   .chat-assistant .chat-text { color: var(--text-dark); }
   .chat-form { margin-top: 8px; }
   .chat-form label { display: block; font-weight: 600; margin: 0 0 6px; color: var(--text-dark); }
-  .chat-form textarea { display: block; width: 100%; box-sizing: border-box; min-height: 6em; resize: vertical; padding: 10px 12px; font-size: 16px; border: 1px solid var(--border-light); border-radius: var(--radius); font-family: inherit; }
+  .chat-form textarea { display: block; width: 100%; box-sizing: border-box; min-height: 3.5em; resize: vertical; padding: 10px 12px; font-size: 16px; border: 1px solid var(--border-light); border-radius: var(--radius); font-family: inherit; }
   .chat-form .chat-send { margin-top: 10px; }
   .hints-confirm { margin-top: 8px; }
   .chat-restart, .chat-retry { margin-top: 10px; }
@@ -160,13 +170,8 @@ const listings = [
   .hints-list { padding-left: 18px; margin: 0 0 8px; }
   .hints-list li, .hints-empty { overflow-wrap: anywhere; word-break: break-word; margin-bottom: 4px; }
   .hints-done { font-weight: 600; }
-  /* Desktop: chat panel fits the viewport below the 70px sticky header; only the
-     transcript scrolls, the form stays pinned, and the hints panel is sticky. */
+  /* Desktop: chat is content-sized; hints panel is sticky beside it. */
   @media (min-width: 768px) {
-    .update-chat { display: flex; flex-direction: column; height: calc(100vh - 70px - 32px); max-height: calc(100vh - 70px - 32px); min-height: 360px; position: sticky; top: 86px; box-sizing: border-box; }
-    .update-chat > * { flex: none; }
-    .update-chat .chat-transcript { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
-    .update-chat .chat-form textarea { min-height: 4em; }
     .update-hints { position: sticky; top: 86px; max-height: calc(100vh - 70px - 32px); overflow-y: auto; box-sizing: border-box; }
   }
   @media (max-width: 767px) {

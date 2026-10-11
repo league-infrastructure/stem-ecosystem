@@ -40,7 +40,7 @@ export function initUpdateChat(page: HTMLElement, type: string, slug: string): v
   label.htmlFor = 'chat-input';
   const input = document.createElement('textarea');
   input.id = 'chat-input';
-  input.rows = 4;
+  input.rows = 3;
   input.maxLength = 4000;
   const sendBtn = el('button', 'chat-send btn', 'Send') as HTMLButtonElement;
   sendBtn.type = 'submit';
