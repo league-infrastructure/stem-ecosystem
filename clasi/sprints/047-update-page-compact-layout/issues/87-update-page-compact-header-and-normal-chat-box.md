@@ -1,5 +1,9 @@
 ---
-status: pending
+status: in-progress
+sprint: '047'
+tickets:
+- 047-001
+- 047-002
 ---
 
 # Update page: compact header and a normal chat box

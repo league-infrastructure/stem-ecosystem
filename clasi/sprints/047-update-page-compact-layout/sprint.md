@@ -62,5 +62,7 @@ Before tickets can be created, all of the following must be true:
 
 | # | Title | Depends On |
 |---|-------|------------|
+| 001 | Compact header and content-sized chat layout | - |
+| 002 | Screenshot verification and issue completion | 001 |
 
 Tickets execute serially in the order listed.
