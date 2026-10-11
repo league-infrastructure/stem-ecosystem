@@ -80,7 +80,7 @@ export function initUpdateChat(page: HTMLElement, type: string, slug: string): v
     const header = document.querySelector('.site-header');
     const headerH = header ? header.getBoundingClientRect().height : 70;
     const other = chatSection.offsetHeight - transcript.offsetHeight;
-    const avail = window.innerHeight - headerH - 12 - other;
+    const avail = window.innerHeight - headerH - 24 - other;
     transcript.style.setProperty('--chat-max', `${Math.max(180, Math.floor(avail))}px`);
   }
   window.addEventListener('resize', fitTranscript);
@@ -94,11 +94,14 @@ export function initUpdateChat(page: HTMLElement, type: string, slug: string): v
 
   // Keep the input on screen without moving the page when it already is.
   function ensureInputVisible() {
-    const r = input.getBoundingClientRect();
+    const margin = 16;
     const header = document.querySelector('.site-header');
     const top = header ? header.getBoundingClientRect().bottom : 0;
-    if (r.bottom > window.innerHeight || r.top < top) {
-      input.scrollIntoView({ block: 'nearest' });
+    const r = form.getBoundingClientRect(); // label + textarea + Send + hint
+    if (r.bottom > window.innerHeight - margin) {
+      window.scrollBy(0, r.bottom - (window.innerHeight - margin));
+    } else if (r.top < top) {
+      window.scrollBy(0, r.top - top - 8);
     }
   }
 
@@ -117,6 +120,7 @@ export function initUpdateChat(page: HTMLElement, type: string, slug: string): v
       stickToBottom = true;
     }
     ensureInputVisible();
+    requestAnimationFrame(ensureInputVisible);
   }
 
   // Builds DOM nodes only (textContent / createTextNode); never parses HTML.
