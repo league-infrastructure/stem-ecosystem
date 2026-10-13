@@ -1,8 +1,9 @@
 ---
 id: '001'
 title: Change footer copyright text
-status: open
-use-cases: [SUC-001]
+status: done
+use-cases:
+- SUC-001
 depends-on: []
 github-issue: ''
 issue: 89-footer-copyright-fleet-and-the-league.md
@@ -18,9 +19,9 @@ In `src/components/Footer.astro` (line ~55) change the copyright line to "Copyri
 
 ## Acceptance Criteria
 
-- [ ] Footer text updated as described
-- [ ] `npm test` passes
-- [ ] `npm run build` passes
+- [x] Footer text updated as described
+- [x] `npm test` passes
+- [x] `npm run build` passes
 
 ## Testing
 
