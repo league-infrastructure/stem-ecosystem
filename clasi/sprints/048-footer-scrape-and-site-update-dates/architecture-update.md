@@ -1,6 +1,6 @@
 ---
-sprint: "048"
-status: draft
+sprint: 048
+status: done
 ---
 
 # Architecture Update -- Sprint 048: Footer scrape and site-update dates
