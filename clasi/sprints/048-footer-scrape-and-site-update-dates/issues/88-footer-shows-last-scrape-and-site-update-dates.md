@@ -1,5 +1,8 @@
 ---
-status: pending
+status: in-progress
+sprint: 048
+tickets:
+- 048-001
 ---
 
 # Footer shows the last scrape date and the site update date
