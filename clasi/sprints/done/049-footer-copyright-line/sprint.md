@@ -1,7 +1,7 @@
 ---
 id: 049
 title: Footer copyright line
-status: planning-docs
+status: done
 branch: sprint/049-footer-copyright-line
 use-cases: []
 issues: []
