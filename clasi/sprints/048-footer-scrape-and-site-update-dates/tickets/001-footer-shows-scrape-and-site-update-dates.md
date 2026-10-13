@@ -1,8 +1,9 @@
 ---
 id: '001'
 title: Footer shows scrape and site-update dates
-status: open
-use-cases: [SUC-001]
+status: done
+use-cases:
+- SUC-001
 depends-on: []
 github-issue: ''
 issue: 88-footer-shows-last-scrape-and-site-update-dates.md
@@ -17,12 +18,12 @@ Footer shows "Events scraped <date>" (scrape-meta.json last_updated) and "Site u
 
 ## Acceptance Criteria
 
-- [ ] Both dates shown, labelled, muted, on every page
-- [ ] Formatted in America/Los_Angeles
-- [ ] `<time datetime>` with full timestamp in title
-- [ ] Site date is a build-time constant, not the visitor clock
-- [ ] /data-access, /for-agents, llms.txt checked for "last updated" wording and made consistent
-- [ ] npm test and npm run build pass
+- [x] Both dates shown, labelled, muted, on every page
+- [x] Formatted in America/Los_Angeles
+- [x] `<time datetime>` with full timestamp in title
+- [x] Site date is a build-time constant, not the visitor clock
+- [x] /data-access, /for-agents, llms.txt checked for "last updated" wording and made consistent
+- [x] npm test and npm run build pass
 
 ## Implementation Plan
 
