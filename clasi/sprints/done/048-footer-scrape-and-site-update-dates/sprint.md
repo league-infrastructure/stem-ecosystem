@@ -1,10 +1,12 @@
 ---
 id: 048
 title: Footer scrape and site-update dates
-status: planning-docs
+status: done
 branch: sprint/048-footer-scrape-and-site-update-dates
-use-cases: [SUC-001]
-issues: [88]
+use-cases:
+- SUC-001
+issues:
+- 88
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
 
