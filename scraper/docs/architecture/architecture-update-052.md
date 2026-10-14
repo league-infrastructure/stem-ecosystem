@@ -1,6 +1,6 @@
 ---
-sprint: "052"
-status: draft
+sprint: '052'
+status: done
 ---
 
 # Architecture Update -- Sprint 052: Publish Events page lead

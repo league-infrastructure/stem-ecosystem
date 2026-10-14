@@ -1,7 +1,7 @@
 ---
 id: '052'
 title: Publish Events page lead
-status: planning-docs
+status: done
 branch: sprint/052-publish-events-page-lead
 use-cases: []
 issues: []
