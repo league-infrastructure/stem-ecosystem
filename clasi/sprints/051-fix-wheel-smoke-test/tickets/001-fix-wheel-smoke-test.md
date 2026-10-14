@@ -1,7 +1,7 @@
 ---
 id: '001'
 title: Fix wheel smoke test
-status: open
+status: done
 use-cases:
 - SUC-001
 depends-on: []
@@ -19,10 +19,10 @@ Update `scraper/dev/wheel_smoke_test.py` and `.github/workflows/wheel-smoke.yml`
 
 ## Acceptance Criteria
 
-- [ ] Every store env var in `scraper/partner_scrape/config.py` (CACHE, DATA, HISTORY, HINTS, LOGS, any others) points at a local temp dir; `_clean_env` strips them from the inherited environment.
-- [ ] A one-partner local roster is seeded (via `partner-scrape partners add` or a `partners/<slug>/partner.json`) before the dry run.
-- [ ] No credentials or network used; dry run still writes nothing.
-- [ ] `python dev/wheel_smoke_test.py` passes locally from `scraper/`; docstring and workflow comments updated.
+- [x] Every store env var in `scraper/partner_scrape/config.py` (CACHE, DATA, HISTORY, HINTS, LOGS, any others) points at a local temp dir; `_clean_env` strips them from the inherited environment.
+- [x] A one-partner local roster is seeded (via `partner-scrape partners add` or a `partners/<slug>/partner.json`) before the dry run.
+- [x] No credentials or network used; dry run still writes nothing.
+- [x] `python dev/wheel_smoke_test.py` passes locally from `scraper/`; docstring and workflow comments updated.
 
 ## Implementation Plan
 
