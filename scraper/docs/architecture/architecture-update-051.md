@@ -1,6 +1,6 @@
 ---
-sprint: "051"
-status: draft
+sprint: '051'
+status: done
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
 # Sprint 051 Architecture Update

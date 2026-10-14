@@ -1,7 +1,8 @@
 # Builds the scraper wheel, installs it into a fresh venv in a temp dir
 # OUTSIDE the repo, and runs `partner-scrape --help` (no credentials) plus
-# one dry run with SCRAPE_CACHE_DIR / PARTNER_SCRAPE_DATA_DIR set to local
-# temp dirs. See scraper/dev/wheel_smoke_test.py.
+# one dry run with every store (SCRAPE_CACHE_DIR, PARTNER_SCRAPE_DATA_DIR,
+# _HISTORY_DIR, _HINTS_DIR, _LOGS_DIR) set to local temp dirs and a seeded
+# one-partner roster. See scraper/dev/wheel_smoke_test.py.
 name: Scraper wheel smoke test
 
 on:

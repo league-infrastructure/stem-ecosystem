@@ -9,8 +9,12 @@ and no bucket credentials:
 2. The bundled registry (``registry_data/``), the in-package data files and
    ``data-schema.md`` are present in the installed package.
 3. One dry run (``--dry-run``, offline: empty registry, empty fake site
-   checkout) succeeds with ``SCRAPE_CACHE_DIR`` and ``PARTNER_SCRAPE_DATA_DIR``
-   pointing at local temp dirs -- never the real bucket -- and writes nothing.
+   checkout) succeeds with every store env var (``SCRAPE_CACHE_DIR``,
+   ``PARTNER_SCRAPE_DATA_DIR``, ``PARTNER_SCRAPE_HISTORY_DIR``,
+   ``PARTNER_SCRAPE_HINTS_DIR``, ``PARTNER_SCRAPE_LOGS_DIR``) pointing at
+   local temp dirs -- never the real bucket -- and writes nothing. The roster
+   lives in the data store, so a one-partner roster is seeded there first with
+   ``partner-scrape partners add``.
    (The real bundled registry is only parsed, not fetched, so CI stays offline.)
 
 Usage::
@@ -57,7 +61,9 @@ def _clean_env(**extra: str) -> dict[str, str]:
         k: v
         for k, v in os.environ.items()
         if not k.startswith(("DO_SPACES_", "AWS_", "ANTHROPIC_"))
-        and k not in {"SCRAPE_CACHE_DIR", "PARTNER_SCRAPE_DATA_DIR", "SITE_DIR",
+        and k not in {"SCRAPE_CACHE_DIR", "PARTNER_SCRAPE_DATA_DIR",
+                      "PARTNER_SCRAPE_HISTORY_DIR", "PARTNER_SCRAPE_HINTS_DIR",
+                      "PARTNER_SCRAPE_LOGS_DIR", "SITE_DIR",
                       "PARTNER_SCRAPE_REGISTRY_DIR", "PARTNER_SCRAPE_EVENT_DB"}
     }
     env.update(extra)
@@ -104,20 +110,38 @@ def main() -> None:
         # 2. Bundled data present in the installed copy.
         print("OK ", _run([py, "-c", _PROBE], cwd=tmp, env=_clean_env()).stdout.strip())
 
-        # 3. Dry run with explicit LOCAL cache/data dirs.
+        # 3. Dry run with every store pointed at a LOCAL dir (no bucket).
         cache, data = tmp / "cache", tmp / "data"
+        history, hints, logs = tmp / "history", tmp / "hints", tmp / "logs"
         site, empty_registry = tmp / "site", tmp / "empty-registry"
         (site / "src" / "data").mkdir(parents=True)
         (site / "src" / "data" / "partners.json").write_text("[]")
         empty_registry.mkdir()
-        env = _clean_env(SCRAPE_CACHE_DIR=str(cache), PARTNER_SCRAPE_DATA_DIR=str(data))
+        env = _clean_env(
+            SCRAPE_CACHE_DIR=str(cache),
+            PARTNER_SCRAPE_DATA_DIR=str(data),
+            PARTNER_SCRAPE_HISTORY_DIR=str(history),
+            PARTNER_SCRAPE_HINTS_DIR=str(hints),
+            PARTNER_SCRAPE_LOGS_DIR=str(logs),
+        )
 
+        # The roster is read from the data store, so seed one partner there.
+        _run([exe, "partners", "add", "--name", "Smoke Test Partner",
+              "--by", "smoke-test"], cwd=tmp, env=env)
+        assert (data / "partners" / "smoke_test_partner" / "partner.json").is_file()
+        print("OK  seeded one-partner local roster")
+
+        def _snapshot() -> dict[str, bytes]:
+            return {str(p): p.read_bytes()
+                    for d in (cache, data, history, hints, logs) if d.exists()
+                    for p in d.rglob("*") if p.is_file()}
+
+        before = _snapshot()
         run = _run([exe, "--dry-run", "--site-dir", str(site),
                     "--registry-dir", str(empty_registry)], cwd=tmp, env=env)
         print("OK  main --dry-run:", run.stdout.strip().splitlines()[0])
 
-        written = [p for d in (data,) if d.exists() for p in d.rglob("*") if p.is_file()]
-        assert not written, f"dry run wrote files: {written}"
+        assert _snapshot() == before, "dry run wrote or changed files"
         print("smoke test passed")
 
 

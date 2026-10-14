@@ -1,7 +1,7 @@
 ---
 id: '051'
 title: Fix wheel smoke test
-status: planning-docs
+status: done
 branch: sprint/051-fix-wheel-smoke-test
 use-cases:
 - SUC-001
