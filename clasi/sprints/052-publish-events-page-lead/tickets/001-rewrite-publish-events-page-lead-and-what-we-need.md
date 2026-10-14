@@ -1,8 +1,9 @@
 ---
 id: '001'
 title: Rewrite Publish Events page lead and What we need
-status: open
-use-cases: [SUC-001]
+status: done
+use-cases:
+- SUC-001
 depends-on: []
 github-issue: ''
 issue: 92-publish-events-page-lead-with-we-copy-from-your-site.md
@@ -18,12 +19,12 @@ Implement changes 1-4 of clasi/issues/92-publish-events-page-lead-with-we-copy-f
 
 ## Acceptance Criteria
 
-- [ ] Hero subtitle removed
-- [ ] First content is a plain-language lead: events are not published on this site; publish on your own website and we automatically copy (scrape) them regularly; events not on your website cannot appear here
-- [ ] "What we need" rewritten from the partner's view: each event page shows title, date and time, location, cost, short description, link (image optional)
-- [ ] Removed: "Adapter framework", partner_scrape/adapters/, ADAPTERS table, export.writer.SITE_SCHEMA_FIELDS; link to data reference kept
-- [ ] Publishing-method sections (iCal, JSON-LD, ...) untouched
-- [ ] npm test and npm run build pass
+- [x] Hero subtitle removed
+- [x] First content is a plain-language lead: events are not published on this site; publish on your own website and we automatically copy (scrape) them regularly; events not on your website cannot appear here
+- [x] "What we need" rewritten from the partner's view: each event page shows title, date and time, location, cost, short description, link (image optional)
+- [x] Removed: "Adapter framework", partner_scrape/adapters/, ADAPTERS table, export.writer.SITE_SCHEMA_FIELDS; link to data reference kept
+- [x] Publishing-method sections (iCal, JSON-LD, ...) untouched
+- [x] npm test and npm run build pass
 
 ## Implementation Plan
 

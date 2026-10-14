@@ -39,25 +39,38 @@ const base = import.meta.env.BASE_URL.replace(/\/+$/, ''); // "" or "/partner-sc
 >
   <section class="hero hero-sm">
     <h1>Publish Your Events</h1>
-    <p>Standard, documented ways to make your events easy for our scraper to find and ingest. Pick whichever fits your site — we are not inventing formats; where a standard already exists, we use it as-is.</p>
   </section>
 
   <div class="publish-page container">
     <section class="pub-section">
+      <h2>You publish on your own website — we copy it</h2>
+      <p>
+        <strong>You don't publish events on this site.</strong> Instead, you publish them on your
+        own website, and we automatically copy (or "scrape") them from there on a regular
+        schedule. If an event isn't on your website, it can't appear here.
+      </p>
+    </section>
+
+    <section class="pub-section">
       <h2>What we need</h2>
       <p>
-        However you publish, we ultimately need each event's title, description, start/end
-        date-time, location, cost, a link back to your page, and (ideally) an image. That's the
-        same event schema documented in full on <a href={`${base}/data-access`}>How to Consume Our
-        Data</a> — see that page for the exact field-by-field reference
-        (<code>export.writer.SITE_SCHEMA_FIELDS</code>). This page doesn't restate that list; it
-        explains which of the methods below gets your data into it.
+        Because we copy your events from your own website, each event on your site should clearly
+        show:
       </p>
+      <ul>
+        <li>the event's title</li>
+        <li>the date and time (start, and end if you have one)</li>
+        <li>where it takes place</li>
+        <li>what it costs (or that it's free)</li>
+        <li>a short description</li>
+        <li>a link to the event's page that we can send people to</li>
+        <li>an image, if you have one</li>
+      </ul>
       <p>
-        Every method here maps onto our existing <strong>Adapter framework</strong>
-        (<code>partner_scrape/adapters/</code>), dispatched by an <code>adapter_type</code> —
-        registering a new type is a one-line addition to the <code>ADAPTERS</code> table in
-        <code>adapters/__init__.py</code>. Nothing below is a bespoke, one-off pipeline.
+        If you want the exact field-by-field details, see
+        <a href={`${base}/data-access`}>How to Consume Our Data</a>. The methods below are
+        different ways of making sure your website shows this information in a form we can read
+        reliably.
       </p>
     </section>
 
@@ -226,6 +239,11 @@ const base = import.meta.env.BASE_URL.replace(/\/+$/, ''); // "" or "/partner-sc
 
   .pub-section h2 {
     margin-bottom: 16px;
+  }
+
+  .pub-section ul {
+    line-height: 1.8;
+    margin: 0 0 12px 24px;
   }
 
   .pub-section p {
