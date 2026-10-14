@@ -1,5 +1,8 @@
 ---
-status: pending
+status: in-progress
+sprint: '050'
+tickets:
+- 050-001
 ---
 
 # About page credits The League of Amazing Programmers as the site developer
