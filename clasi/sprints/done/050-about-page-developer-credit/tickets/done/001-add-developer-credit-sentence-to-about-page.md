@@ -1,8 +1,9 @@
 ---
 id: '001'
 title: Add developer credit sentence to About page
-status: open
-use-cases: [SUC-001]
+status: done
+use-cases:
+- SUC-001
 depends-on: []
 github-issue: ''
 issue: 90-about-page-credits-the-league-as-site-developer.md
@@ -18,9 +19,9 @@ Add a sentence to the Our Partners section of `src/pages/about.astro`, after the
 
 ## Acceptance Criteria
 
-- [ ] Sentence present and links to https://www.jointheleague.org/
-- [ ] Hosting sentence unchanged
-- [ ] `npm test` and `npm run build` pass
+- [x] Sentence present and links to https://www.jointheleague.org/
+- [x] Hosting sentence unchanged
+- [x] `npm test` and `npm run build` pass
 
 ## Testing
 

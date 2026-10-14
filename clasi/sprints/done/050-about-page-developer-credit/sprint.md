@@ -1,7 +1,7 @@
 ---
 id: '050'
 title: About page developer credit
-status: planning-docs
+status: done
 branch: sprint/050-about-page-developer-credit
 use-cases: []
 issues: []
