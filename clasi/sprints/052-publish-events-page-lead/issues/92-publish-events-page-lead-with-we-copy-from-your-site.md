@@ -1,5 +1,8 @@
 ---
-status: pending
+status: in-progress
+sprint: '052'
+tickets:
+- 052-001
 ---
 
 # Publish Events page: lead with "publish on your own site; we copy it"
